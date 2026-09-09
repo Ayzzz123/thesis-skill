@@ -33,6 +33,7 @@
 | `writing.chapters` | map | 否 | `{}` | `{ch3:{file,status,affected_by_issue:[]}}` |
 | `qa.reports` | list | 否 | `[]` | `{file,ts,summary}` |
 | `qa.findings` | list | 否 | `[]` | 与 `stage.open_issues` 联动的索引 |
+| `document_generation` | map | 否 | `{}` | DOCX 生成模式记录：`{mode: template_fidelity\|format_reconstruction, template_file: path\|null}`，S9 构建时由 `scripts/template_fidelity.select_docx_mode()` 写入 |
 | `last_updated` | string | 是 | `""` | ISO 8601 |
 
 约束：论文正文、文献全文、数据表**不得**写入 state.yaml，只写路径与摘要。
@@ -273,6 +274,7 @@ writing:
   status: not_started
   gate_evidence: {}
   chapters: {}
+document_generation: {}   # S9 构建时写入（template-fidelity.md §2）
 qa:
   reports: []
   findings: []

@@ -30,13 +30,14 @@ def main():
     N = doc.page_count
 
     def is_chapter_start_pg(pg):
-        """下一页(索引 pg)是否以 H1 类标题起始（去空格匹配）。"""
+        """下一页(索引 pg)是否以 H1 类标题起始（去空格匹配，兼容 阿拉伯/中文 章号与隔空标题）。"""
         if pg >= N:
             return False
         t = doc[pg].get_text().replace(" ", "").replace("\u3000", "")
         heads = ["第1章", "第2章", "第3章", "第4章", "第5章", "第6章",
-                 "参考文献", "致谢", "附录A", "附录B", "目  录", "目录",
-                 "摘  要", "摘要", "Abstract"]
+                 "第一章", "第二章", "第三章", "第四章", "第五章", "第六章",
+                 "参考文献", "致谢", "附录A", "附录B", "目录", "摘要", "Abstract",
+                 "ABSTRACT"]
         return any(h.replace(" ", "") in t[:200] for h in heads)
 
     issues = []       # A 类候选（布局异常，需修复/人工复核）

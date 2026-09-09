@@ -410,3 +410,9 @@ Skill：正在登记材料...
 本 README 描述的是 **aeromech-thesis v1.0.0** 当前已实现的能力。任何未来功能必须先实现并通过测试，再更新 README，不得为了宣传而提前声明未实现功能。
 
 如发现本文档与实际实现不一致，请以实际实现为准。欢迎反馈文档错误。
+
+## 版本记录
+
+- v1.1.0 — Template Fidelity introduced：双模式（TEMPLATE_FIDELITY / FORMAT_RECONSTRUCTION）、模板母版驱动、
+  页码防重启/表格分隔/题注跨空行纪律、tf_qa.py（TF-01~20）、Test A/B。
+- v1.0.x — delivery stabilization：docx_engine、update_toc、export_pdf、pdf_qa、visual_regression。
