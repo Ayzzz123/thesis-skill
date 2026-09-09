@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 """
-docx_engine.py — DOCX 排版原语库（aeromech-thesis v1.0.0 delivery stabilization）
+docx_engine.py — DOCX 排版原语库（aeromech-thesis v1.1.0；含 Template Fidelity 表格分隔保护）
 
 从已通过视觉验收的 build_docx 实现中抽取的与论文内容无关的排版函数。
 供 Agent 在每次论文组装时按论文结构调用（生成项目专属 build_docx.py）。
@@ -170,6 +170,9 @@ def clean_cell(t):
 
 def cell_borders(cell, edges):
     tcPr = cell._tc.get_or_add_tcPr()
+    old_b = tcPr.find(qn("w:tcBorders"))
+    if old_b is not None:
+        tcPr.remove(old_b)   # 重复调用时先清除旧边框，避免同一边缘元素叠加（首个 nil 掩盖后续 single）
     borders = OxmlElement("w:tcBorders")
     for edge, sz in edges.items():
         el = OxmlElement(f"w:{edge}")
@@ -197,10 +200,24 @@ def col_weights_for(header):
     return weights
 
 
+def guard_table_gap(doc):
+    """DOCX 纪律：相邻两个表格之间必须有合法段落分隔，否则 Word 打开时会把相邻表格自动合并。
+    本函数在添加新表格前调用：若当前文档最后一个 body 子元素是表格，先补一个空段落。"""
+    body = doc.element.body
+    children = list(body.iterchildren())
+    if children and children[-1].tag == qn("w:tbl"):
+        p = doc.add_paragraph()
+        p.paragraph_format.line_spacing = 1.0
+        run = p.add_run("")
+        set_font(run, "宋体", 9)
+
+
 def add_table(doc, header, rows, font_size=10.5, header_cn="黑体",
               repeat_header=True, row_keep=True, compact=False,
               landscape=False, col_weights=None, widths_cm=None):
-    """三线表：tblHeader 表头重复 + cantSplit 行不拆分 + 可选紧凑（附录大表）。"""
+    """三线表：tblHeader 表头重复 + cantSplit 行不拆分 + 可选紧凑（附录大表）。
+    Template Fidelity：调用前自动执行 guard_table_gap（表间段落分隔保护）。"""
+    guard_table_gap(doc)
     t = doc.add_table(rows=1 + len(rows), cols=len(header))
     t.alignment = WD_TABLE_ALIGNMENT.CENTER
     no_border_table(t)
@@ -295,6 +312,7 @@ def figure_block(doc, png_path, fig_caption, img_type="default",
     """FigureBlock：无边框单列表格 1 行，行 cantSplit → 图片+图题整体不可跨页。
     返回表格 XML 元素（可用 anchor.addnext 插入到指定段落后）。"""
     w_cm = calc_image_width_cm(png_path, img_type, landscape)
+    guard_table_gap(doc)
     tb = doc.add_table(rows=1, cols=1)
     tb.alignment = WD_TABLE_ALIGNMENT.CENTER
     no_border_table(tb)

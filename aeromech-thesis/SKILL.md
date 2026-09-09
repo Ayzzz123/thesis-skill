@@ -5,6 +5,8 @@ description: 航空机械与飞行器维修工程方向的毕业论文/毕业设
 
 # AeroMech Thesis（AMT）
 
+> 版本：v1.1.0（Template Fidelity introduced，见 §17；兼容 v1.0 状态机/诚信/QA 规则）
+
 航空机械与飞行器维修工程方向的毕业论文研究与写作智能助手。服务对象：飞行器维修工程技术、航空机电设备维修、飞机维修、航空机械、航空制造、飞行器制造、机械工程、机械设计制造等专业的高职/本科学生。
 
 **本 Skill 不是通用航空论文 Skill**：非机械/维修类的航空方向，以及查重降重、答辩演练、格式与 docx 交付，应使用 `aviation-engineering-thesis`。多 Skill 共存时的分工、抢占禁令与移交规则见 §14。
@@ -64,6 +66,7 @@ description: 航空机械与飞行器维修工程方向的毕业论文/毕业设
 | 论文体检 | `references/agents/qa.md` |
 | 答辩准备 | `references/agents/defense.md` |
 | 交付流水线（DOCX/PDF/TOC/QA/门禁） | `references/delivery-pipeline.md`（规则）+ `scripts/docx_engine.py` / `build_docx.py` / `update_toc.py` / `export_pdf.py` / `pdf_qa.py` / `visual_regression.py` |
+| 模板驱动交付（Template Fidelity） | `references/template-fidelity.md`（规则）+ `scripts/template_fidelity.py`（原语/模式选择）+ `scripts/tf_qa.py`（TF-01~20） |
 
 ## 4. Master 路由规则
 
@@ -282,3 +285,29 @@ S10 答辩独立，不受交付层影响。核心原则：
 - 进入 Delivery Gate 前必须通过：`scripts/pdf_qa.py`（16 项 + TOC-01~10）与 `scripts/visual_regression.py`（占用率 + A/B 类判定）。
 - 研究证据层限制（无真实故障数据、无受控手册、文献全文未获取、机型未绑定等）不得因排版成功被覆盖，仍按 Integrity 机制披露。
 - 脚本清单：`render_mermaid.py`（图渲染+Chrome 自动探测）、`docx_engine.py`（排版原语）、`build_docx.py`（内容层组装器模板，用法 `python build_docx.py <project_root>`）、`update_toc.py`、`export_pdf.py`、`pdf_qa.py`、`visual_regression.py`。所有脚本带命令行入口与退出码。
+
+## 17. Template Fidelity / Template-Driven Delivery（v1.1.0）
+
+两种 DOCX 生成模式（详细规则见 `references/template-fidelity.md`）：
+
+- **TEMPLATE_FIDELITY**：`materials/school/` 存在可编辑 Word 模板（.docx/.dotx）时**必须**采用。
+  原始模板是交付文档母版：复制模板→保留封面/声明/样式/节/页眉页脚/页码结构→删除样例内容→
+  在模板结构内插入论文内容→TOC/页码→PDF。禁止从空白 Document 重建；禁止仅提取字号字体后视为模板接管。
+- **FORMAT_RECONSTRUCTION**：仅当不存在 Word 模板时允许（规范解析→样式重建），不得冒充模板复制。
+
+要点（防重启三查/表合并/题注丢失/冲突优先级/模板扩展标签/构建脚本纪律/TF-01~20 QA 均见 template-fidelity.md）：
+1. 模式选择：`select_docx_mode()`；结果写入 state.yaml `document_generation: {mode, template_file}`。
+2. 新节（add_section）会复制上一节 pgNumType：续节必须 clear 后显式写 fmt（不带 start），禁止页码意外重启；
+   前置部分罗马、正文/附录阿拉伯连续，页眉自正文起。
+3. 相邻表格之间必须有段落分隔（docx_engine 已内置 guard_table_gap，add_table/figure_block 自动执行），
+   防止 Word 自动合并表格；md 表题识别跨空行，题注不因空行丢失。
+4. 冲突优先级：学校正式规范 > 学校模板实际结构 > 模板示例文字 > Skill general defaults；
+   冲突记录为 `template_vs_spec_conflict`，不得静默处理。
+5. 内容驱动扩展（新章/表/图/附录/横向节）允许，但标注【模板扩展/非学校明文要求】，不改模板固定结构。
+6. 封面只替换已知字段（题目等），缺失字段保留模板空槽，不虚构、不重新设计封面。
+7. 交付保真 QA：`python scripts/tf_qa.py --template <模板.docx> --docx 毕业论文.docx [--pdf 毕业论文.pdf] --out <目录>`
+   （TF-01~20，含模板↔成品页面渲染对照 pair_*.png）。
+8. 构建脚本纪律：通用层=docx_engine/template_fidelity/tf_qa；项目层=项目内 build_docx_<project>.py；
+   禁止把测试项目题目/图表/参考文献/路径硬编码进通用脚本（旧 build_docx.py 仅用于 FORMAT_RECONSTRUCTION/旧项目兼容）。
+9. 回归：`python tests/test_a_template_fidelity.py`（Test A：有模板→母版驱动→TF QA）与
+   `python tests/test_b_format_reconstruction.py`（Test B：无模板→重建）必须通过。
