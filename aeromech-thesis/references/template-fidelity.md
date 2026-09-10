@@ -1,4 +1,4 @@
-# Template Fidelity / Template-Driven Delivery（aeromech-thesis v1.1.0）
+# Template Fidelity / Template-Driven Delivery（aeromech-thesis v1.1.0；v1.2.0 起配套 Cover Fidelity，见 references/cover-fidelity.md）
 
 本文定义 DOCX 交付的两种生成模式与模板驱动（Template Fidelity）机制。机制源自 thesis-test-3.0
 真实学校模板压力测试的已验证实现（OBS-006 修复），沉淀为本 Skill 正式规则。
@@ -38,6 +38,11 @@ document_generation:
 - 固定内容（校名、校徽、声明原文、页眉文本、样式定义）：尽量原样保留。
 - 可变字段（封面：题目/姓名/学号/学院/专业/指导教师/职称/日期等）：只替换需要的字段；
   信息缺失 → 保留模板空槽/占位符，**不得虚构、不得重新设计封面布局**。
+- **封面对象树零调整（COVER_FIDELITY_MODE，v1.2.0）**：不得删除/压缩/移动封面区任何元素；
+  含绘图对象的段落与大字号段落一律不改行距；仅「纯空白段与 ≤14pt 标签行」可按
+  `references/cover-fidelity.md` 第 3 节条件收紧。
+- **tblPr 规范化防护**：Word COM 保存会移除封面表 tblStyle/tblCellMar，交付顺序须为
+  build → update_toc → `cover_fidelity.py --restore` → export_pdf。
 - 样例内容（说明文字、××× 示例段、示例图表、示例公式）：删除并替换为真实内容。
 
 ## 5. section 与页码规则（防重启三查）
@@ -81,6 +86,9 @@ python-docx 的 `add_section()` 会**复制上一节 sectPr**（含 pgNumType �
 TF-20 不允许只做 XML 属性检查：必须渲染原始模板与最终 DOCX/PDF 的对应页
 （封面/声明/摘要/ABSTRACT/目录/正文章首/图表页/参考文献/附录/致谢），记录位置、层级、
 字体、空白、页眉、页脚、页码与结构对应情况。
+
+封面专项 QA 见 Cover Fidelity（v1.2.0）：`scripts/cover_fidelity.py` CF-01~20
+（模板↔成品双 PDF 首页图像位置/尺寸/文本行/像素覆盖对照，OBS-007 防回归）。
 
 ## 9. 冲突优先级与记录
 

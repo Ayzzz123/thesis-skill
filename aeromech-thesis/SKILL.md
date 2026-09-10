@@ -5,7 +5,7 @@ description: 航空机械与飞行器维修工程方向的毕业论文/毕业设
 
 # AeroMech Thesis（AMT）
 
-> 版本：v1.1.0（Template Fidelity introduced，见 §17；兼容 v1.0 状态机/诚信/QA 规则）
+> 版本：v1.3.10（COLOR Fidelity 定案：校名素材=绿色+效果链→黑，COLOR-01~16 硬门禁；对象已完全继承模板时零修改，见 §18.7；兼容 v1.0 状态机/诚信/QA 规则与 v1.1.0~v1.3.9 全部 Fidelity 能力）
 
 航空机械与飞行器维修工程方向的毕业论文研究与写作智能助手。服务对象：飞行器维修工程技术、航空机电设备维修、飞机维修、航空机械、航空制造、飞行器制造、机械工程、机械设计制造等专业的高职/本科学生。
 
@@ -36,6 +36,7 @@ description: 航空机械与飞行器维修工程方向的毕业论文/毕业设
 | Engineering | `references/agents/engineering.md` | S5 工程分析（FMEA/FTA/RCA/有限元流程） |
 | Data | `references/agents/data.md` | S6 数据分析（描述统计/简单分析） |
 | Figure | `references/agents/figure.md` | S8 图表规划与生成（Mermaid/matplotlib 脚本） |
+| Cover Fidelity | `references/cover-fidelity.md` | 封面对象树保真（COVER_FIDELITY_MODE / COVER_IMMUTABLE_REGION：零删除/零压缩/图片继承/fill-on-rule 横线保留）与 CF-01~25 QA（v1.3.0，OBS-007/008） |
 | Citation Integrity | `references/agents/citation.md` | 引用链审计（观点→来源→支持度→编号→格式） |
 | QA | `references/agents/qa.md` | S9 论文体检（六大维度检查，四级风险分级） |
 | Defense | `references/agents/defense.md` | S10 答辩准备（PPT结构/多版本答辩稿/预测问题库） |
@@ -67,6 +68,10 @@ description: 航空机械与飞行器维修工程方向的毕业论文/毕业设
 | 答辩准备 | `references/agents/defense.md` |
 | 交付流水线（DOCX/PDF/TOC/QA/门禁） | `references/delivery-pipeline.md`（规则）+ `scripts/docx_engine.py` / `build_docx.py` / `update_toc.py` / `export_pdf.py` / `pdf_qa.py` / `visual_regression.py` |
 | 模板驱动交付（Template Fidelity） | `references/template-fidelity.md`（规则）+ `scripts/template_fidelity.py`（原语/模式选择）+ `scripts/tf_qa.py`（TF-01~20） |
+| 封面保真交付（Cover Fidelity） | `references/cover-fidelity.md`（规则）+ `scripts/cover_fidelity.py`（CF-01~25 + restore_cover_tblpr） |
+| 页级保真交付（Page Fidelity） | `scripts/page_fidelity_qa.py`（HF-01~04 页眉 / AF-01~04 摘要页 / AT-01~05 附录表 / RF-01~04 参考文献，v1.3.1） |
+| 图表版式交付（Figure/Table Fidelity） | `scripts/figure_table_qa.py`（FIG-01~12 图片 / TAB-01~10 表格）与 `scripts/content_purity_qa.py`（MD/INT/PRM/APX，v1.3.2） |
+| 图形拓扑质量（Graph Quality） | `scripts/graph_quality_qa.py`（GQ-01~15）+ `scripts/figkit.py`（绘制+layout 几何元数据，v1.3.3） |
 
 ## 4. Master 路由规则
 
@@ -284,7 +289,7 @@ S10 答辩独立，不受交付层影响。核心原则：
 - **Critical** 禁止交付；**High** 禁止正式终稿交付；**Medium** 允许测试交付但须披露；**Low** 允许并记录。
 - 进入 Delivery Gate 前必须通过：`scripts/pdf_qa.py`（16 项 + TOC-01~10）与 `scripts/visual_regression.py`（占用率 + A/B 类判定）。
 - 研究证据层限制（无真实故障数据、无受控手册、文献全文未获取、机型未绑定等）不得因排版成功被覆盖，仍按 Integrity 机制披露。
-- 脚本清单：`render_mermaid.py`（图渲染+Chrome 自动探测）、`docx_engine.py`（排版原语）、`build_docx.py`（内容层组装器模板，用法 `python build_docx.py <project_root>`）、`update_toc.py`、`export_pdf.py`、`pdf_qa.py`、`visual_regression.py`。所有脚本带命令行入口与退出码。
+- 脚本清单：`render_mermaid.py`（图渲染+Chrome 自动探测）、`docx_engine.py`（排版原语）、`build_docx.py`（内容层组装器模板，用法 `python build_docx.py <project_root>`）、`update_toc.py`、`export_pdf.py`、`pdf_qa.py`、`visual_regression.py`、`cover_fidelity.py`（CF-01~20 + tblPr 恢复）。所有脚本带命令行入口与退出码。
 
 ## 17. Template Fidelity / Template-Driven Delivery（v1.1.0）
 
@@ -311,3 +316,152 @@ S10 答辩独立，不受交付层影响。核心原则：
    禁止把测试项目题目/图表/参考文献/路径硬编码进通用脚本（旧 build_docx.py 仅用于 FORMAT_RECONSTRUCTION/旧项目兼容）。
 9. 回归：`python tests/test_a_template_fidelity.py`（Test A：有模板→母版驱动→TF QA）与
    `python tests/test_b_format_reconstruction.py`（Test B：无模板→重建）必须通过。
+
+## 18. Cover Fidelity（v1.2.0，OBS-007）
+
+完整规则见 `references/cover-fidelity.md`。要点：
+
+1. **固定模板区域**：模板第一页（封面）只允许"保留整棵对象树 + 替换可变字段文本"；
+   禁止删除封面元素、压缩含绘图/大字号段落、重建或重绘封面（COVER_FIDELITY_MODE）。
+2. **封面单页化的唯一合法手段**：仅压缩"纯空白段"（≤240 exact）与"≤14pt 标签行"
+   （700→≥660 exact），且逐段条件判断；OBS-007 教训：把含校徽 inline 图的段（300/auto）
+   压成固定小行距，Word 按基线对齐把图抬出页边距（rect.top<0）导致校徽裁切。
+3. **Word COM 规范化防护**：update_toc 保存会移除封面表格 tblPr 的 tblStyle/tblCellMar；
+   交付顺序 = build → update_toc → `cover_fidelity.py --restore`（重新注入）→
+   `repaginate_tables.py`（TABLE_START_BLOCK 硬校验/强制分页）→ export_pdf → QA。
+4. **交付 QA 链**：pdf_qa.py + visual_regression.py + tf_qa.py（TF-01~20）+
+   `cover_fidelity.py`（CF-01~25，模板↔成品双 PDF 首页视觉对照 + 对象树/横线一致性）；CF 任一 FAIL 禁止交付。
+   v1.3.0 新增：COVER_IMMUTABLE_REGION（封面仅允许 replace placeholder text；禁止 rebuild/recreate/
+   delete cover objects/flatten text boxes）；字段填值 fill-on-rule（值写在模板原横线上，横线不得消失）。
+5. **标题过长**：槽位内换行或降字号（默认尝试 12pt 单行），不改布局；仍超则记录
+   COVER-TITLE-OVERFLOW 到交付报告。
+
+### 18.1 页级保真 QA（v1.3.1）
+
+`scripts/page_fidelity_qa.py`：HF-01~04 页眉文字/横线/位置/连续性（横线来自模板页眉样式
+pBdr，交付构建必须克隆模板页眉段落而非新建）；AF-01~04 摘要页（中文摘要独立页、
+英文题目与 ABSTRACT/正文/KEY WORDS 同页）；AT-01~05 附录表（无 Markdown 残留/三线表/
+中文排版/表头/中英表题）；RF-01~04 参考文献（≥15 篇、外文≥5、编号连续、文内引用一一对应）。
+交付 QA 链 = pdf_qa + tf_qa + cover_fidelity + cover_align_qa（COVER-ALIGN-01~16）
++ cover_fill_qa（COVER-FILL-01~14）+ color_fidelity_qa（COLOR-01~16）
++ page_fidelity_qa + figure_table_qa
++ content_purity_qa（TABCAP-01~08）
++ graph_quality_qa（GQ-01~20）+ table_readability_qa（TR-01~14）+ repaginate_tables + visual_regression。
+
+### 18.2 图表版式与内容净化（v1.3.2）
+
+`scripts/figure_table_qa.py`（FIG-01~12 / TAB-01~10）：图片显示尺寸与版心一致（引擎 BODY_WIDTH
+须与模板边距匹配，17cm 版心下图片显示宽 ≈14.4cm、缩放 ≥70%）、图内有效字号 ≥7pt 自检、
+图题在下/表题在上、三线表、列宽极值比、无 Markdown 残留、图表被正文引用；
+`scripts/content_purity_qa.py`（MD/INT/PRM/APX/TABCAP）：PDF 无 `**`/`|`/`##`/`---` 残留、
+无 artifacts/ 等内部路径、无 Agent/Skill/用户/测试项目等提示词、附录标题独立起页、
+附录表跨页须表头重复、表题位于表上方。
+配套修复（同版）：`template_fidelity.add_para_runs` 剥离 `**` 标记；`docx_engine` 版心 17cm、
+表格间隔段用 1pt 全角空格（防 Word 合并相邻表格）；小表（≤12 行）整块 keep；
+H1 分页规则=仅正文首个 H1 不分页、其余（含附录双 H1）一律另起页。
+
+### 18.3 图形拓扑质量（GRAPHICAL_READABILITY_FIRST，v1.3.3）
+
+原则：可读性 > 版式规范 > 自然分页 > 页数；**禁止"塞进一页"驱动缩图**；允许复杂图"图+图题"独立成页。
+图内有效字号：正文/标签**≥9pt**（7pt 仅为绝对底线，不得作为合格标准）；优先重设计拓扑（单列主链、
+分层框图、树状+折线绕行），不得仅靠放大字号或整体缩放。
+
+`scripts/figkit.py`：绘制即输出 layout JSON（框/边多段折线/文本 bbox 的几何元数据，bbox 经 renderer 实测），
+供几何检查真实检测"拓扑拥挤"。`scripts/graph_quality_qa.py`（GQ-01~15）：
+节点/条形不重叠、文本不溢出框（0.03 容差）、边无穿字、边不穿节点（多段线采样）、
+同层最小框距 ≥0.2cm、主流程方向一致、图例不覆盖、数据标签不重叠、有效字号 ≥9pt、
+无裁剪、图题同页、图题-图/图-正文间距、独立页占用率 ≥55%、人工视觉对照（before|after 输出）。
+
+Mermaid 硬规则：不得以"默认布局成功=合格"；必须核节点/边数、边界、穿字、间距、长标签与最终 PDF 显示尺寸，
+必要时改方向/拓扑/短标签/拆图。长表跨页必须表头重复；表题一律在表格上方（中/英双语）。
+
+### 18.4 表启动块（TABLE_START_BLOCK，v1.3.4→v1.3.5）
+
+要求：中文表题+英文表题+表头行+首行数据 构成不可拆"表启动块"（长表允许数据跨页且表头重复；
+禁止"题注在上页、表格在下页"、禁止题注孤立留页、禁止启动页题注-表头间大片空白）。
+机制（三层，不得只依赖 keep_with_next）：
+①构建期：中英题注段 keep_with_next + 题注→表头→首行 keep 链（≤12 行小表整表 keep）；
+②渲染后硬校验：`scripts/repaginate_tables.py`（Word COM 实测每表 题注/表头/首行页码，
+不一致即在题注前 InsertBreak 硬分页并重排至收敛 ≤3 轮；长表校验 Rows(1).HeadingFormat 表头重复），
+置于 update_toc 之后、export_pdf 之前，退出码非 0 不得交付；
+③项目 md 标记【分页】可将表/图强制另页（图页只保留"图+双行题注（+图内注）"）。
+QA：`scripts/content_purity_qa.py` TABCAP-01 中英题同页 / TABCAP-02 英题与表头同页 /
+TABCAP-03 表头与首行同页 / TABCAP-04 表题不单独留上一页 / TABCAP-05 启动页无大片空白
+（题注-表头实测空白 ≤2.0cm）/ TABCAP-06 长表跨页重复表头 / TABCAP-07 图表题注顺序
+（表题在表上方、图题在图下方、编号单调递增）/ TABCAP-08 图3-1后无长重复说明
+（图页仅图+中英题注，>40 字文本块=0）。检查器定位题注须用"表题长签名"而非裸编号
+（防正文引用句误配）。
+BUG-014 防残留：构建期对"（图X-Y …"未严格匹配短占位的行一律 DROP 并记录
+（旧式含"：清单/→"的长图注不得作为正文输出）；图后完整部件清单只在表中承担。
+
+### 18.5 横向宽表版式（TABLE_LANDSCAPE_SECTION，v1.3.6→v1.3.7）
+
+适用：13 列级宽表（FMEA 分析表等）在 A4 纵向版心（17cm）必然折碎成"一字一行"时，
+改用 A4 横向独立页（版心 25.7cm），此为版式扩展而非内容修改。
+**结构规范（v1.3.7 确认）：每张宽表一个独立横向节，节间恢复纵向正文**——
+正文纵向 → 表4-1 横向 → 恢复纵向（组析文）→ 表4-2 横向 → … → 表4-4 横向 → 恢复纵向。
+每张表独占其横向页（题注 CN/EN + 表格），组析文落在两表之间的纵向页；
+汇总类窄表（如 RPN 排序表）保持纵向单页，不强行横向。
+机制：①项目 md 标记 `【横向开始】`/`【横向结束】` → 构建端克隆当前节属性写入
+1pt 空段 pPr（结束前节），再交换 sentinel sectPr 的 pgSz 宽高并置 orient；
+**横向节必须剥离 pgNumType.start（页码连续不重启）**，页眉/页脚引用随克隆继承，
+多次交替仍连续（每次 begin 克隆-剥离同一套逻辑）；
+②横向表在引擎中 `add_table(..., landscape=True)`（宽度基数 25.7cm），列宽按
+"故障原因/局部影响/最终影响/检测防护/故障模式"优先分配，S·O·D·RPN 保持 ≤1.2cm 窄列；
+③横向表不压缩（行距 1.15/边距 0.1cm 常规值）；纵向汇总表如因整页排布出现
+"析文孤行页"，可用单元格边距 0.04→0.02cm 级行距微调消孤（不改字号/结构）；
+④`【分页】` 标记被 H2/H3、图、insert_table 分支消费（H1 仅清除标记，防双分页空白页）。
+图4-1 类 25 条排序图：纵向大画幅独立图页（画布=显示尺寸 1:1，如 14.4×20.5cm），
+标签一律"编号+短名称"（完整名称由汇总表承担），数值全标 + 白底衬防阈值虚线压字，
+末端幽灵刻度（超出 xlim 的 250）须 set_xticks 显式限定。
+新增 QA：`scripts/table_readability_qa.py`（TR-01~04 逐表可读=横向且主列≥9pt 且列宽合规；
+TR-05 主列平均字号≥9pt；TR-06 无一字一行（≥6 字/行）；TR-07~10 原因/局部影响/最终影响/
+检测防护列可正常成句（≥2.6cm 且 ≥8 字/行）；TR-11 S·O·D·RPN 紧凑且数字；TR-12 题注-表头
+同页；TR-13 长表表头重复；TR-14 无裁剪）。
+`scripts/graph_quality_qa.py` 扩至 GQ-01~20：GQ-16 最终 PDF 渲染级可读（300dpi 标签墨迹簇
+=25 且中位高≥0.9×9.5pt）、GQ-17 标签不重叠（几何+渲染簇数）、GQ-18 不贴边（≥0.08cm）、
+GQ-19 留白合理（覆盖 60~99%、墨迹 2~45%）、GQ-20 未被正文挤压（独立图页 ≥13×16cm 且无正文文本）。
+HF-03 横线一致性改按方向分组核验（横向页宽=横向版心宽）；TAB-08 总宽容差放宽至 25.9cm。
+
+### 18.6 封面字段填写保真（COVER-FILL-ALIGN + COVER_FILL_CENTERING，v1.3.7→v1.3.8）
+
+原则：封面 = 模板首页直用；只填"题目/专业"等已提供字段（其余空槽保留，不编造），
+**文字必须落在模板原填写横线上，且在该横线有效区间内水平居中**
+（相对"本字段横线"居中，非页面居中；不得从横线左端起写）。
+填写配方（fill_on_rule）：
+①定位段内"下划线空格 run"（u=single 且无文字，模板每格 36 个 16pt 空格 = 288pt 线长）；
+②题目填入**标签行自身**的横线（题　目:____，不是其下的续行），在候选字号
+[12,11.5,11,10.5,10]pt 中取"最大且不越线"者（度量 = SimSun 字体度量 ×1.045 安全系数）；
+③**居中组装**（COVER_FILL_CENTERING）：边距 =（线长 − 实渲宽度）/2，两侧等宽复刻为
+「满格 16pt 空格 + 残隙空格（其字号 = 4×残隙pt，空格宽=字号/2）」，顺序
+[前导满格][前导残隙][值][后导残隙][后导满格]，线长不变、不新增/不删除横线；
+实渲宽度校准：中英混排 ×1.043（两点实测），纯 CJK =1.0；
+④专业同法（16pt）；姓名/学号/学院/指导教师/职称/日期等**未来填入时同样居中**，
+不得回退为左对齐；无数据时空槽保持模板原样。
+**Word COM 陷阱**：段落级 spacing 覆盖（before/after=0）会被 Word 保存时按样式还原，
+需收缩行距时改用表格单元格边距等结构性属性；run 克隆必须在其 rPr 内调整 sz
+（原件 run 的覆盖可能被归一化丢弃）。
+QA：`scripts/cover_align_qa.py`（COVER-ALIGN-01~16：校徽/校名/主标题/标签位置、题目-横线
+关系、各字段基线、日期、行尾对齐、间距、无额外横线、无字段漂移 ≤2pt、视觉 ≤4%）；
+`scripts/cover_fill_qa.py`（COVER-FILL-01~14：题目/专业在横线区间内、水平居中
+（中心偏差 ≤2pt）、各空槽保留、不新增/不删除横线、PDF 视觉）。
+
+### 18.7 封面颜色保真（COLOR Fidelity，v1.3.9→v1.3.10）
+
+**对象优先原则**：封面校名/校徽等模板固定图片/图形对象，必须原样继承模板——同一媒体对象
+（字节级）、同一 DrawingML 效果链、同一渲染颜色。处理颜色质疑的次序：
+①先读对象来源（DOCX word/media + rels + blip 效果链，或用 PDF 对象/像素实测）——
+**不得凭截图猜颜色**；②颜色规则优先级 = 原始模板对象（含效果链）的完整语义 > 学校模板要求 >
+学校规范 > Skill 默认；③"打印前字体统一黑色"只约束**文字**（正文/标题），不得作用于
+图片/图形对象；④对象已完全继承模板时（媒体字节一致 + 效果链一致 + pic:pic XML 一致 +
+区域像素差为 0），**不得人为修色**（禁重绘/OCR/转文字/强制改黑改绿改灰）。
+实战案例（校名"南京农业大学"，v1.3.10 完整定案）：**原始素材 PNG 实为绿色 #009F62**
+（南农绿书法字，非灰非黑）+ 模板自带效果链 `grayscl + lum(-6000/18000) + biLevel(50000)`，
+效果链把 93.8% 墨迹转为纯黑——即"绿色素材印成黑色"是模板固有设计；Word 渲染下
+模板页与交付页校名均为纯黑且区域像素 Δ=0.000、PDF 内嵌熔合图 sha 一致
+（41b9248583e2f34f…）；**对照中出现的"灰/绿观感"来自渲染器对 DrawingML 效果链的支持差异**
+（不应用效果→绿、仅灰度化→灰、全应用→黑）。模板中的 WMF 为样例页 MathType OLE 公式，
+随样例页移除属正确。**结论：零修改、不重建**。
+QA：`scripts/color_fidelity_qa.py`（COLOR-01~16：01~08 对象类型/颜色来源/未重着色/校徽/
+主标题黑/正文全黑/视觉对照/差异范围；09~16 源对象 pic:pic XML 级一致/媒体全量 sha/
+效果链一致/PDF 渲染（熔合图 sha+像素）/校徽对象/未被重新着色硬门禁/正文黑/视觉对照）。

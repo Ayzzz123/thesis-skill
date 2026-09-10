@@ -20,7 +20,7 @@ from docx.shared import Cm, Pt, RGBColor
 
 # ---------------- 常量 ----------------
 PAGE_WIDTH_LANDSCAPE_CM = 25.7   # A4 横向 29.7 − 2×2.0 边距
-BODY_WIDTH_PORTRAIT_CM = 15.5    # A4 纵向 21.0 − 3.0 − 2.5 边距
+BODY_WIDTH_PORTRAIT_CM = 17.0    # A4 纵向 21.0 − 3.0 − 2.5 边距
 
 # PAGE_FLOW_OPTIMIZER：图块高度分级（推荐值，可按版式调整）
 FIG_H_NORMAL = 9.5      # 常规图（框图/统计图/故障树）
@@ -206,10 +206,12 @@ def guard_table_gap(doc):
     body = doc.element.body
     children = list(body.iterchildren())
     if children and children[-1].tag == qn("w:tbl"):
+        # 纯空段在 Word 打开时仍可能被判定为“无分隔”而合并相邻表格；
+        # 使用 1pt 极小的空格 run 作为合法分隔段（视觉近零高，Word 不再合并）
         p = doc.add_paragraph()
         p.paragraph_format.line_spacing = 1.0
-        run = p.add_run("")
-        set_font(run, "宋体", 9)
+        run = p.add_run("　")
+        set_font(run, "宋体", 1)
 
 
 def add_table(doc, header, rows, font_size=10.5, header_cn="黑体",
