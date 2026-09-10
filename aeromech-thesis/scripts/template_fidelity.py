@@ -246,12 +246,14 @@ def add_para_runs(p, text, ascii_f="Times New Roman", ea="宋体", sz=12, bold=F
     for seg in re.split(r"(\*\*.+?\*\*|\[\d+\])", text):
         if not seg:
             continue
-        run = p.add_run(seg)
         if seg.startswith("**") and seg.endswith("**"):
+            run = p.add_run(seg[2:-2])  # 剥离 Markdown 加粗标记
             rpr(run, ascii_f, ea, sz, bold=True)
         elif re.fullmatch(r"\[\d+\]", seg):
+            run = p.add_run(seg)
             rpr(run, ascii_f, ea, sz, bold=bold, sup=True)
         else:
+            run = p.add_run(seg)
             rpr(run, ascii_f, ea, sz, bold=bold)
     return p
 
