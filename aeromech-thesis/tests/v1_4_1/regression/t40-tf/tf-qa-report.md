@@ -1,7 +1,7 @@
 # TF-01~20 QA（tf_qa.py）
-- 模板: materials/school/本科毕业论文参考模板（自然科学）（工程、物流、工管专业适用）.docx
-- DOCX: 毕业论文.docx
-- PDF: 毕业论文.pdf
+- 模板: C:\Users\29603\Desktop\AAA\thesis-test\thesis-test-4.0\materials\school\本科毕业论文参考模板（自然科学）（工程、物流、工管专业适用）.docx
+- DOCX: C:\Users\29603\Desktop\AAA\thesis-test\thesis-test-4.0\毕业论文.docx
+- PDF: C:\Users\29603\Desktop\AAA\thesis-test\thesis-test-4.0\毕业论文.pdf
 
 - TF-01 封面结构一致: PASS | 1x1表=True; 段落数 21/21; 图数成品>=模板
 - TF-02 封面字段一致: PASS | 模板标签均保留=True（缺失字段应保留空槽，不得虚构）

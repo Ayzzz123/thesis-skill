@@ -5,9 +5,8 @@ description: 航空机械与飞行器维修工程方向的毕业论文/毕业设
 
 # AeroMech Thesis（AMT）
 
-> 版本：v1.4.1（Stability & Production Hardening：v1.4.0 Research Integrity Layer 之上——① tf_qa 支持无模板运行（模板对照项记 NOT_APPLICABLE，配置错误退出码 3，绝不伪造 PASS）；② RQG 新增 NEEDS_HUMAN_REVIEW 状态：弱证据语境下 RQG-09/RQG-10 不得自动 PASS，生成人工复核清单（claim/evidence/reason/uncertainty）并消费 `.aeromech/research/human-review.yaml` 裁决（Gate：PASS / PASS_WITH_HUMAN_REVIEW / FAIL / ERROR）；规则见 `references/research-human-review.md`；③ 全 RI 层稳定状态码 + severity + reason + remediation，异常/注册表损坏绝不产生 PASS；④ 建立开发目录 Desktop\thesis-skill\aeromech-thesis 与安装目录同步规程（DEV_SYNC.md/INSTALL_SYNC.md + sync.py）；⑤ tests/v1_4_1/ 专项测试；兼容 v1.0 状态机/诚信/QA 与 v1.1.0~v1.4.0 全部能力）
+> 版本：v1.5.0（Research Intelligence & Agent Loop：v1.4.1 稳定基线之上——① Research Design Registry（design.yaml/scope.yaml/repairs.yaml，随注册表引擎）；② 方法选择审计与 Research Feasibility Gate RF-01~10（`scripts/research_design.py`）；③ 统一诊断引擎（19 类 issue_type + 根因 + 影响 + auto/queue/block 分流，`scripts/research_diagnosis.py`）；④ Repair Plan Registry 与白名单自动修复（论断降级/摘要数字同步/受控 recompute/模拟标签回填，全留痕可复检，`scripts/research_repair.py`）；⑤ Research Agent Loop（PLAN→ANALYZE→DETECT→DIAGNOSE→REPAIR→RE-ANALYZE→VALIDATE→ACCEPT，≤5 轮，终态 BLOCK/PASS_WITH_HUMAN_REVIEW/PASS_WITH_WARNINGS/PASS，`scripts/research_agent_loop.py`）；⑥ 8 维 Research Quality Score（Critical/High 未解决不得被总分掩盖，`scripts/research_quality_score.py`）；规则见 `references/research-intelligence.md`，阶段职责见 §20；兼容 v1.0 状态机/诚信/QA 与 v1.1.0~v1.4.1 全部能力，只增不破：旧项目无 design/scope/repairs 时 v1.5 工具全部 NOT_APPLICABLE/不阻塞；发布验证：tests/v1_5 418 断言 + test-7.0 端到端 + t30~t60 回归）
 >
-> 〔v1.5.0 集成中，待 test-7.0 端到端验证通过后发布；Research Intelligence 能力见 §3/§4/§16/§20 与 `references/research-intelligence.md`〕
 
 航空机械与飞行器维修工程方向的毕业论文研究与写作智能助手。服务对象：飞行器维修工程技术、航空机电设备维修、飞机维修、航空机械、航空制造、飞行器制造、机械工程、机械设计制造等专业的高职/本科学生。
 

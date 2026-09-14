@@ -77,7 +77,16 @@ def main():
         v_dev, v_ins = skill_version(DEV), skill_version(ins_dir)
         check("两侧 SKILL.md 版本一致", v_dev == v_ins and v_dev is not None,
               f"dev={v_dev} install({ins_dir})={v_ins}")
-        check("版本为 1.4.1", v_dev == "1.4.1", str(v_dev))
+        # 版本联动校验（替代原"版本为 1.4.1"硬编码）：SKILL.md / README / CHANGELOG 三处版本一致——
+        # 发布时三处漏改任何一处都会在这里失败（v1.4.1 技术债收口）。
+        rm = re.search(r"aeromech-thesis v(\d+\.\d+\.\d+)",
+                       open(os.path.join(DEV, "README.md"), encoding="utf-8").read())
+        clg = open(os.path.join(DEV, "CHANGELOG.md"), encoding="utf-8").read()
+        cm = re.search(r"^## v(\d+\.\d+\.\d+)", clg, re.M)
+        check("README 与 SKILL.md 版本一致", rm and v_dev == rm.group(1),
+              f"skill={v_dev} readme={rm.group(1) if rm else None}")
+        check("CHANGELOG 顶部版本与 SKILL.md 一致", cm and v_dev == cm.group(1),
+              f"skill={v_dev} changelog={cm.group(1) if cm else None}")
         check("install 侧含 research-human-review.md",
               os.path.isfile(os.path.join(ins_dir, "references", "research-human-review.md")))
 

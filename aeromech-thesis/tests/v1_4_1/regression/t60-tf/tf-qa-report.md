@@ -1,7 +1,7 @@
 # TF-01~20 QA（tf_qa.py）
 - 模板: （未提供 → 模板对照类检查记 NOT_APPLICABLE）
-- DOCX: 毕业论文.docx
-- PDF: 毕业论文.pdf
+- DOCX: C:\Users\29603\Desktop\thesis-test-6.0\毕业论文.docx
+- PDF: C:\Users\29603\Desktop\thesis-test-6.0\毕业论文.pdf
 
 - TF-01 封面结构一致: NOT_APPLICABLE | 无模板项目：模板对照不可执行（FORMAT_RECONSTRUCTION）；如提供学校模板或规范文档后重跑本项
 - TF-02 封面字段一致: NOT_APPLICABLE | 无模板项目：模板对照不可执行（FORMAT_RECONSTRUCTION）；如提供学校模板或规范文档后重跑本项

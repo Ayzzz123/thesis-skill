@@ -27,7 +27,7 @@
 - GQ-12 图题与图片间距≥1.5pt: PASS | 题注与图保持间距
 - GQ-13 图片与正文间距≥5pt: PASS | 图上方与正文留白充足
 - GQ-14 独立图页无异常留白: PASS | p8:94%；p28:94%（≥55%）
-- GQ-15 人工视觉复核: PASS | 对照图已输出（before|after，4 组）：C:\Users\29603\.qoder-cn\skills\aeromech-thesis\tests\v1_4_1\regression/t40-gq\pairs；人工目检：无重叠/无穿字/留白充分
+- GQ-15 人工视觉复核: PASS | 对照图已输出（before|after，4 组）：C:\Users\29603\Desktop\thesis-skill\aeromech-thesis\tests\v1_4_1\regression\t40-gq\pairs；人工目检：无重叠/无穿字/留白充分
 - GQ-16 图4-1最终PDF文字可读: PASS | 有效字号 10.0pt（≥9.5）；300dpi 渲染标签行 25/25 簇、中位高 39px（≥36）
 - GQ-17 图4-1标签不重叠: PASS | 标签列 25 条两两不重叠、不与条形相交；渲染 25/25 簇
 - GQ-18 图4-1标签不贴边: PASS | 全要素距画布边最小 0.12cm（≥0.08）

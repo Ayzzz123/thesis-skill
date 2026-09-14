@@ -232,10 +232,12 @@ class _DiagBuilder:
         self._seen.add(key)
         self.n += 1
         auto_ok = bool(auto) and issue_type in AUTO_ELIGIBLE
-        # 稳定 ID 键含 severity：同一（type,nodes,rule）不同严重度的条目必须可分别裁决
-        # （B9：human-review-queue 以 diagnosis_id 为键，ID 碰撞会使一条决定误关多条诊断）
-        nkey = f"{issue_type}|{','.join(str(x) for x in nodes)}|{rule}|{severity}"
-        stable = hashlib.md5(nkey.encode("utf-8")).hexdigest()[:6].upper()
+        # 稳定 ID = 去重键的哈希：必须含 severity 与 payload——同一 (type,nodes,rule) 下
+        # 不同严重度（B9）或不同命中对象（B9b：同规则命中两个不同越界词）都必须可分别裁决，
+        # 否则 human-review-queue 以 diagnosis_id 为键时一条决定会误伤多条诊断。
+        # payload 由检测内容决定，跨轮稳定，满足"同问题同 ID 可复用"。
+        stable = hashlib.md5(
+            f"{issue_type}|{key[1]}|{rule}|{severity}|{pkey}".encode("utf-8")).hexdigest()[:6].upper()
         self.items.append({
             "diagnosis_id": f"DIAG-{stable}",
             "issue_type": issue_type,

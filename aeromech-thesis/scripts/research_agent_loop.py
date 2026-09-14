@@ -48,7 +48,15 @@ def _build_queue(root, diag, rqg_nhr):
     old = _load_old_queue(root)
     queue = []
     for d in diag["diagnoses"]:
-        if d["status"] != "open" or not d["human_review_required"]:
+        if d["status"] != "open":
+            # B10：已裁决关闭的条目（rejected/deferred/closed）必须保留在队列中——
+            # diagnose 依据队列里的 applied_status 维持关闭状态；重建时丢弃会使裁决
+            # 记录消失，被驳回/延期的诊断在下一轮复活（决策必须持久）。
+            prev_closed = old.get(d["diagnosis_id"])
+            if d["status"] in ("rejected_by_human", "deferred_by_human") and prev_closed:
+                queue.append(dict(prev_closed))
+            continue
+        if not d["human_review_required"]:
             continue
         opts = d.get("repair_options") or []
         first = opts[0] if opts else {"id": "", "repair_type": "REQUEST_HUMAN_REVIEW", "action": ""}

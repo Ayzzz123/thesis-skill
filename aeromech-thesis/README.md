@@ -302,7 +302,24 @@ mmdc 失败 → matplotlib 生成真正可读的替代图（含流程图框/故�
 
 ## 11. 当前版本
 
-**aeromech-thesis v1.4.1（Stability & Production Hardening）**
+**aeromech-thesis v1.5.0（Research Intelligence & Agent Loop）**
+
+v1.5.0 在 v1.4.1 稳定基线之上新增研究智能层（发现→诊断→修复→再验证闭环），既有能力只增不破：
+- ✅ **Research Design Registry**：design.yaml/scope.yaml/repairs.yaml 三注册表（随注册表引擎，缺省 N/A 兼容旧项目）
+- ✅ **方法选择审计 + Research Feasibility Gate（RF-01~10）**：needs⊆provides、evidence_requirement×实际数据、
+  候选≥2+选择理由；判定 FEASIBLE / CONDITIONALLY_FEASIBLE / INFEASIBLE（INFEASIBLE 不继续正常生成）
+- ✅ **统一诊断引擎**：19 类 issue_type（诊断条目含根因/影响/修复选项/置信度），auto/queue/block 三通道分流，
+  稳定 DIAG ID（severity+payload 消歧）；范围控制（scope creep）与数字一致性（425.4≡425.40≡425）检测
+- ✅ **Repair Plan Registry + 白名单自动修复**：REP-XXX 全 before/after 留痕 + 复检；仅 4 操作
+  （论断降级/摘要数字同步/受控 recompute/模拟标签回填）；recompute 受控执行模型（仅项目内 .py，无 shell）；
+  白名单外一律人工（禁止捏造数据/扩范围/换方法/静默裁决冲突）
+- ✅ **Research Agent Loop**：PLAN→ANALYZE→DETECT→DIAGNOSE→REPAIR→RE-ANALYZE→VALIDATE→ACCEPT；
+  MAX_ITERATIONS=5（无改善即停）；迭代日志 loop-log（事实+规则，不含内部推理）；
+  终态 BLOCK / PASS_WITH_HUMAN_REVIEW / PASS_WITH_WARNINGS / PASS；人工队列 approve/reject/modify 持久裁决
+- ✅ **8 维 Research Quality Score**：Research Design/Evidence/Data/Analysis/Argumentation/Conclusion/Citation/Coherence；
+  Critical/High 未解决时 blocked=True，总分不得作为交付依据
+- ✅ **Delivery Gate 集成**：旧项目（无 design/scope）NOT_APPLICABLE 不阻塞；回归 tests/v1_5（418 断言）+
+  test-7.0 端到端 + t30~t60 证据见 tests/v1_5/v1.5-regression-report.md
 
 v1.4.1 在 v1.4.0 Research Integrity Layer 之上做稳定性与产品化（不新增大型功能）：
 - ✅ **统一状态模型**：PASS / WARN / FAIL / NEEDS_HUMAN_REVIEW / NOT_APPLICABLE / SKIPPED_WITH_REASON / ERROR；
@@ -433,12 +450,19 @@ Skill：正在登记材料...
 
 ## 15. README 的原则
 
-本 README 描述的是 **aeromech-thesis v1.4.1** 当前已实现的能力。任何未来功能必须先实现并通过测试，再更新 README，不得为了宣传而提前声明未实现功能。
+本 README 描述的是 **aeromech-thesis v1.5.0** 当前已实现的能力。任何未来功能必须先实现并通过测试，再更新 README，不得为了宣传而提前声明未实现功能。
 
 如发现本文档与实际实现不一致，请以实际实现为准。欢迎反馈文档错误。
 
 ## 版本记录
 
+- v1.5.0 — Research Intelligence & Agent Loop：design/scope/repairs 注册表；research_design.py（方法选择审计 +
+  RF-01~10 可行性门禁）；research_diagnosis.py（19 类 issue_type 统一诊断+根因+auto/queue/block 分流+范围控制+数字一致性）；
+  research_repair.py（REP 计划 + 白名单自动修复 + recompute 受控执行 + apply-human 裁决执行）；research_agent_loop.py
+  （≤5 轮闭环 + loop-log + 终态）；research_quality_score.py（8 维评分，Critical 不被总分掩盖）；
+  Delivery Gate/state.md §17.1/SKILL.md §20 集成；test-7.0 端到端验收（植入 7 类缺陷全部捕获）；
+  修复 B1~B10（Citation 维可达、severity 归一、recompute 白名单、diagnosis_id 消歧、裁决持久化、
+  数字基准选择、RQG-14 文档同义词、pdf_qa 环境码 3 等）；tests/v1_5（13 文件 418 断言）。
 - v1.4.1 — Stability & Production Hardening：统一状态模型（PASS/WARN/FAIL/NEEDS_HUMAN_REVIEW/NOT_APPLICABLE/SKIPPED_WITH_REASON/ERROR + severity/reason/remediation）；RQG-09/RQG-10 语义项人工复核回路（human-review-checklist + human-review.yaml；PASS_WITH_HUMAN_REVIEW）；tf_qa 无模板运行（NOT_APPLICABLE，配置错误退出码 3）；开发/安装目录同步规程（DEV_SYNC/INSTALL_SYNC + sync.py）；tests/v1_4_1（5 测试）。
 - v1.4.0 — Research Integrity & Evidence Traceability：Research Integrity Layer（`.aeromech/research/` 10 类注册表 +
   traceability.json）、research_integrity.py（注册表引擎：validate/trace/coverage）、research_quality_qa.py（RQG-01~15，
