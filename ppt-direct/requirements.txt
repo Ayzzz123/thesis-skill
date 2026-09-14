@@ -1,0 +1,6 @@
+# ppt-direct 运行依赖
+# 安装：pip install -r requirements.txt
+
+python-pptx>=1.0
+PyYAML>=6.0
+python-docx>=0.8.11   # 仅 --docx 输入源需要

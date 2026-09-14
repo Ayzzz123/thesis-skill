@@ -1,0 +1,35 @@
+# ppt-direct 内置默认主题（学术蓝）
+# ⚠️ 仅为无学校模板时的 fallback 默认设计，不代表任何学校正式要求；
+#    用户提供校模 .pptx 时由 scripts/theme_extract.py 提取并覆盖本文件。
+name: default-academic-blue
+size: "16:9"            # 16:9 | 4:3
+
+colors:
+  primary: "4A90E2"     # 主色（标题/章节页/强调条）
+  accent: "F5A623"      # 点缀色（编号/关键词高亮）
+  text: "333333"        # 正文
+  muted: "999999"       # 页码/脚注
+  bg: "FFFFFF"          # 背景
+  light: "EAF2FC"       # 主色浅底（面板/目录底纹）
+
+fonts:
+  cjk: "微软雅黑"
+  latin: "Calibri"
+
+sizes:
+  cover_title: 36
+  cover_sub: 16
+  section_no: 54
+  h1: 26                # 页标题
+  body: 18              # 正文要点
+  small: 12             # 页码/注释
+
+limits:
+  bullets_per_slide: 7      # PPT-02
+  chars_per_slide: 150      # PPT-03（正文页可见文字，不计备注）
+  notes_required: true      # PPT-10
+
+page_tiers:
+  short:    { label: "10页档", min: 8,  max: 12, duration_min: 5 }
+  standard: { label: "15页档", min: 12, max: 18, duration_min: 8 }
+  long:     { label: "20页档", min: 16, max: 24, duration_min: 10 }
