@@ -240,6 +240,33 @@ def _execute_number_sync(root, rep):
     return True, f"摘要数字 {old} → {new}（{hits} 处）", results
 
 
+# ---------------- recompute 受控执行模型（B7 信任边界，v1.5.0） ----------------
+# 为什么需要执行外部计算：CALC 注册条目（computations.yaml.recompute.cmd）声明"如何重算"；
+#   修复器执行它把 output 从"登记值"升级为"可复算值"，是计算可复现规则（RQG-14）的闭环手段。
+# 输入来源：命令文本仅来自本项目的注册表（用户/Agent 登记，非外部输入）；执行前按下列约束校验。
+# 命令白名单：仅允许 `<python解释器> <项目内相对路径>.py [参数…]` 一种形态；
+#   解释器一律替换为当前 sys.executable（忽略登记值），拒绝 shell 元字符、绝对路径、.. 越界、
+#   `-c`/模块运行等任意代码入口。工作目录固定为 project_root；超时 180s；
+#   子进程环境继承（无提权），失败/超时/退出码非零一律记 False 并留痕，绝不静默。
+RECOMPUTE_CMD_RE = re.compile(r"^(?:python|python3|py)\s+(\S+\.py)((?:\s+\S+)*)$")
+
+
+def _validate_recompute_cmd(root, cmd):
+    """把登记的命令规约为 (argv 列表) 或 None（不合格）。禁止 shell=True 执行任意串。"""
+    m = RECOMPUTE_CMD_RE.match(str(cmd).strip())
+    if not m:
+        return None
+    script, extra = m.group(1), m.group(2).strip()
+    if os.path.isabs(script) or ".." in script.replace("\\", "/").split("/"):
+        return None
+    script_abs = os.path.realpath(os.path.join(root, script))
+    root_abs = os.path.realpath(root)
+    if not script_abs.startswith(root_abs + os.sep) or not os.path.isfile(script_abs):
+        return None
+    argv = [sys.executable, script_abs] + (extra.split() if extra else [])
+    return argv
+
+
 def _execute_recompute(root, rep):
     payload = rep.get("payload") or {}
     cid = str(payload.get("calc_id") or "")
@@ -250,8 +277,12 @@ def _execute_recompute(root, rep):
     cmd = rec.get("cmd") if isinstance(rec, dict) else str(rec)
     if not cmd:
         return False, "recompute.cmd 为空", results
+    argv = _validate_recompute_cmd(root, cmd)
+    if argv is None:
+        return False, ("recompute 命令不符合受控白名单（仅允许 `python <项目内相对路径>.py`，"
+                       "禁 shell 元字符/绝对路径/越界），拒绝执行"), results
     try:
-        p = subprocess.run(cmd, shell=True, cwd=root, capture_output=True, text=True,
+        p = subprocess.run(argv, shell=False, cwd=root, capture_output=True, text=True,
                            encoding="utf-8", timeout=180)
     except subprocess.TimeoutExpired:
         return False, "recompute 超时（>180s）", results
@@ -335,6 +366,17 @@ def _verify_recompute(root, rep):
     return ok, f"复检：{cid} verified={bool(it and it.get('verified'))}"
 
 
+def _verify_fix_label(root, rep):
+    """复检：目标数据集 label 已为规定模拟标签。"""
+    dsids = [str(x) for x in ((rep.get("payload") or {}).get("datasets") or [])]
+    items = RI.load_registry(root, "datasets") or []
+    missing = [d for d in dsids
+               if not any(str(x.get("id")) == d and x.get("label") == RI.SYNTH_LABEL
+                          for x in items)]
+    ok = bool(dsids) and not missing
+    return ok, f"复检：label 齐备={ok}" + (f"，缺失={missing}" if missing else "")
+
+
 def execute(root, ids=None, dry_run=False):
     """执行 proposed 自动修复。返回 (done[], failed[])。"""
     items = RI.load_registry(root, "repairs") or []
@@ -361,7 +403,7 @@ def execute(root, ids=None, dry_run=False):
         it["status"] = "applied" if ok else "rejected"
         # 复检
         verify_fn = {"downgrade_wording": _verify_downgrade, "number_sync": _verify_number_sync,
-                     "recompute": _verify_recompute}.get(op)
+                     "recompute": _verify_recompute, "fix_synth_label": _verify_fix_label}.get(op)
         if ok and verify_fn:
             vok, vmsg = verify_fn(root, it)
             it["verification"] = vmsg
@@ -509,7 +551,13 @@ def main():
         return 2
     try:
         if args.action == "plan":
-            created = plan(root)
+            diags = None
+            if args.diagnosis_json:
+                if not os.path.isfile(args.diagnosis_json):
+                    print(f"ERROR: 诊断 JSON 不存在 {args.diagnosis_json}")
+                    return 3
+                diags = json.load(open(args.diagnosis_json, encoding="utf-8")).get("diagnoses")
+            created = plan(root, diagnoses=diags)
             print("proposed:", created or "(无新计划)")
             return 0
         if args.action == "execute":

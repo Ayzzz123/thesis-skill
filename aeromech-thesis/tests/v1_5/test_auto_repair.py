@@ -108,6 +108,43 @@ def main():
                           if x["id"] == "DS-001").get("type"))
     check("negative 数据类型未被改动", before_type == after_type, f"{before_type} → {after_type}")
 
+    # ---------- negative（B7 回归）：recompute 受控执行模型 —— 白名单外的命令形态一律拒执 ----------
+    root9 = F.write_project(os.path.join(tmp, "recomp_ctl"), variant="calc_gap_recompute")
+    evil_cmds = [
+        ("任意代码入口", "python -c print(1)"),
+        ("非 python 解释器", "calc.exe"),
+        ("越界相对路径", "python ../outside.py"),
+        ("绝对路径", "python C:/Windows/System32/calc.py"),
+        ("shell 元字符注入", "python a.py && del b.py"),
+        ("项目内不存在的脚本", "python no_such_script.py"),
+    ]
+    for i, (name, cmd) in enumerate(evil_cmds):
+        ids_e = RP.plan(root9, [{"diagnosis_id": f"DIAG-EV{i}", "issue_type": "CALCULATION_GAP",
+                                 "severity": "high", "affected_nodes": ["CALC-001"],
+                                 "detail": "重算", "auto_repairable": True,
+                                 "recommended_repair": {"repair_type": "RECALCULATE",
+                                                        "operation": "recompute",
+                                                        "payload": {"calc_id": "CALC-001",
+                                                                    "recompute": {"cmd": cmd}}}}])
+        done_e, failed_e = RP.execute(root9, ids=ids_e)
+        check(f"negative recompute 拒绝「{name}」", not done_e and bool(failed_e),
+              cmd[:26])
+    check("negative 危险命令全部未把计算伪标 verified",
+          next(x for x in RI.load_registry(root9, "computations")
+               if x["id"] == "CALC-001").get("verified") is not True)
+    ids_ok = RP.plan(root9, [{"diagnosis_id": "DIAG-EVOK", "issue_type": "CALCULATION_GAP",
+                              "severity": "high", "affected_nodes": ["CALC-001"],
+                              "detail": "重算", "auto_repairable": True,
+                              "recommended_repair": {"repair_type": "RECALCULATE",
+                                                     "operation": "recompute",
+                                                     "payload": {"calc_id": "CALC-001", "recompute": {
+                                                         "cmd": "python .aeromech/transcripts/recompute_calc001.py"}}}}])
+    done_ok, failed_ok = RP.execute(root9, ids=ids_ok)
+    calc_ok = next(x for x in RI.load_registry(root9, "computations") if x["id"] == "CALC-001")
+    check("negative 对照组：受控命令（项目内 .py）仍可执行并通过复检",
+          bool(done_ok) and not failed_ok and calc_ok.get("verified") is True,
+          str(done_ok)[:100])
+
     # ---------- negative：非白名单 operation 即使被标 auto 也不执行 ----------
     root5 = F.write_project(os.path.join(tmp, "forbid"))
     RI.add_entry(root5, "repairs", {

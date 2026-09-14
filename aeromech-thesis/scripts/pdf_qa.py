@@ -4,7 +4,9 @@ pdf_qa.py — PDF 结构 QA（aeromech-thesis v1.0.0 delivery stabilization）
 用法: python pdf_qa.py <project_root>
 检查（以最终 PDF 为真值）: 页数/页码/TOC/Heading/Figure/Table/占位文字/
       路径泄露/模拟数据标签/待核实/引用/文本可提取/TOC-01~10
-退出码: 0=通过, 1=High 级问题, 2=Critical 级问题
+退出码: 0=通过, 1=High 级问题(FAIL), 2=Critical 级问题(FAIL), 3=环境/配置错误(非内容结论)
+      （v1.5 B6 收口：找不到 PDF/缺依赖/参数错误属 ERROR，不占用内容失败码；
+        交付链其余旧脚本沿用 0/1/2(severity) 语义，统一状态词表见 delivery-pipeline.md §8.1）
 """
 import os
 import re
@@ -16,17 +18,17 @@ CRITICAL_ISSUES, HIGH_ISSUES = [], []
 def main():
     if len(sys.argv) < 2:
         print("用法: python pdf_qa.py <project_root>")
-        return 1
+        return 3
     root = sys.argv[1]
     pdf = os.path.join(root, "毕业论文.pdf")
     if not os.path.exists(pdf):
         print(f"错误: 找不到 {pdf}")
-        return 2
+        return 3
     try:
         import pymupdf as fitz
     except ImportError:
         print("错误: 需要 pymupdf (pip install pymupdf)")
-        return 1
+        return 3
 
     doc = fitz.open(pdf)
     N = doc.page_count

@@ -6,7 +6,7 @@
 证据 / 建议修复 / 置信度 / 自动可修 / 需人工）。
 
 用法：
-  python research_diagnosis.py <project_root> [--out <dir>] [--json] [--quiet-rqg]
+  python research_diagnosis.py <project_root> [--out <dir>] [--json] [--no-rqg]
 退出码：0=无 critical/high；1=存在 critical/high；2=注册表未初始化；3=ERROR
 """
 import argparse
@@ -27,7 +27,7 @@ import research_design as RD
 PRIORITY_CLASS = {
     "RQ_METHOD_MISMATCH": 0, "DESIGN_EVIDENCE_MISMATCH": 0, "METHOD_SELECTION_WEAK": 0,
     "SCOPE_OVERFLOW": 0, "SCOPE_UNDERFLOW": 0, "FEASIBILITY_BLOCK": 0,
-    "EVIDENCE_GAP": 1, "DATA_GAP": 1, "UNRESOLVED_CONFLICT": 1,
+    "EVIDENCE_GAP": 1, "DATA_GAP": 1, "UNRESOLVED_CONFLICT": 1, "CITATION_GAP": 1,
     "CLAIM_OVERSTRENGTH": 2, "CONCLUSION_OVERREACH": 2, "ABSTRACT_MISMATCH": 2,
     "CALCULATION_GAP": 3, "QUANTITATIVE_INCONSISTENCY": 3,
     "TRACEABILITY_GAP": 4, "DUPLICATE_ANALYSIS": 4, "REDUNDANT_CONTENT": 4,
@@ -67,6 +67,10 @@ REPAIR_OPTIONS = {
     ],
     "UNRESOLVED_CONFLICT": [
         {"id": "R-001", "repair_type": "REQUEST_HUMAN_REVIEW", "action": "人工裁定来源取舍并填写 resolution/reason"},
+    ],
+    "CITATION_GAP": [
+        {"id": "R-001", "repair_type": "REWRITE_SECTION", "action": "在正文相应论断处补引用编号（不得凭空造来源）"},
+        {"id": "R-002", "repair_type": "ADD_EVIDENCE", "action": "确系未使用的注册文献退回未注册状态（清理登记表）"},
     ],
     "CLAIM_OVERSTRENGTH": [
         {"id": "R-001", "repair_type": "REVISE_CLAIM", "action": "论断强度降级（C4→C2/C1），保持技术事实不变"},
@@ -115,6 +119,7 @@ IMPACT_BY_TYPE = {
     "DESIGN_EVIDENCE_MISMATCH": "设计承诺与可得证据不匹配，研究声称超出可实现范围",
     "METHOD_SELECTION_WEAK": "方法选择缺少论证，无法证明研究路径的合理性",
     "EVIDENCE_GAP": "关键论断缺少可核实证据，论证链在此处断裂",
+    "CITATION_GAP": "注册文献证据未被正文使用，引用完整性与来源-论断对应关系受损",
     "DATA_GAP": "分析输入不完整或来源不可追，结果可复现性受损",
     "CLAIM_OVERSTRENGTH": "论断强度超过证据能力，读者会高估结论可靠性",
     "CONCLUSION_OVERREACH": "结论超出证据支持范围，可能构成研究性失实",
@@ -214,6 +219,9 @@ class _DiagBuilder:
 
     def add(self, issue_type, severity, detail, nodes, root_cause, evidence,
             repair_type, operation, payload, confidence, auto, rule, target=None):
+        # severity 归一到统一小写词表（RQG 派生项携带 "Critical/High/…" 首字母大写形态；
+        #不归一则 SEV_ORDER/counts/SEV_HARD 的 lowercase 比较会漏计——B 类伴生缺陷修复）
+        severity = str(severity or "medium").lower()
         try:
             pkey = json.dumps(payload or {}, sort_keys=True, ensure_ascii=False, default=str)
         except Exception:
@@ -463,8 +471,8 @@ def diagnose(root, pdf=None, use_rqg=True):
                               evidence=[detail], repair_type="REWRITE_SECTION", operation=None,
                               payload={}, confidence="medium", auto=False, rule="RQG-11")
             elif code == "RQG-12":
-                b.add("EVIDENCE_GAP", sev, f"注册文献证据未被正文使用（RQG-12）：{detail}",
-                      [], root_cause="文献登记与正文引用不同步", evidence=[detail],
+                b.add("CITATION_GAP", sev, f"注册文献证据未被正文使用（RQG-12）：{detail}",
+                      ids, root_cause="文献登记与正文引用不同步（引用完整性受损）", evidence=[detail],
                       repair_type="ADD_EVIDENCE", operation=None, payload={},
                       confidence="medium", auto=False, rule="RQG-12")
             elif code == "RQG-13":

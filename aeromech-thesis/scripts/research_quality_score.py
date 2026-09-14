@@ -21,7 +21,7 @@ SEVERITY_POINTS = {"critical": 60, "high": 30, "medium": 10, "low": 3}
 DIMENSIONS = ["Research Design", "Evidence", "Data", "Analysis",
               "Argumentation", "Conclusion", "Citation", "Coherence"]
 
-# issue_type → 归属维度
+# issue_type → 归属维度（v1.5 §8 全部类型；新增类型必须同步登记，未知类型走兜底不静默丢弃）
 ISSUE_DIMENSION = {
     "RQ_METHOD_MISMATCH": "Research Design",
     "DESIGN_EVIDENCE_MISMATCH": "Research Design",
@@ -36,9 +36,11 @@ ISSUE_DIMENSION = {
     "DUPLICATE_ANALYSIS": "Analysis",
     "CLAIM_OVERSTRENGTH": "Argumentation",
     "TRACEABILITY_GAP": "Argumentation",
+    "CITATION_GAP": "Citation",
     "CONCLUSION_OVERREACH": "Conclusion",
     "ABSTRACT_MISMATCH": "Conclusion",
     "QUANTITATIVE_INCONSISTENCY": "Conclusion",
+    "REDUNDANT_CONTENT": "Coherence",
     "ORPHAN_FIGURE": "Coherence",
     "ORPHAN_TABLE": "Coherence",
 }
@@ -54,11 +56,14 @@ def compute(root, findings=None, coverage=None):
         it = str(f.get("issue_type", ""))
         dim = ISSUE_DIMENSION.get(it)
         if not dim:
-            continue
-        sev = str(f.get("severity", "medium"))
+            # 兜底（B2 机制修复）：未映射类型不得静默丢失——计入 Coherence 并标注 UNMAPPED，
+            # 使"诊断发现问题但评分不认识"在结构上不可能发生；同时暴露给映射表维护者。
+            dim = "Coherence"
+        sev = str(f.get("severity", "medium")).lower()
         pts = SEVERITY_POINTS.get(sev, 5)
         dims[dim]["score"] = max(0, dims[dim]["score"] - pts)
-        dims[dim]["deductions"].append(f"{it}({sev}): {str(f.get('detail', ''))[:48]} (−{pts})")
+        tag = it if it in ISSUE_DIMENSION else f"{it}(UNMAPPED)"
+        dims[dim]["deductions"].append(f"{tag}({sev}): {str(f.get('detail', ''))[:48]} (−{pts})")
         if sev in ("critical", "high") and str(f.get("disposition", "block")) != "queue":
             blocks.append(f"{it}[{sev}] {str(f.get('detail', ''))[:60]}")
 

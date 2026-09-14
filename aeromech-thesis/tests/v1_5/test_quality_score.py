@@ -112,6 +112,35 @@ def main():
           any("Coverage" in x for x in s5["dimensions"]["Evidence"]["deductions"]),
           str(s5["dimensions"]["Evidence"]["deductions"])[:120])
 
+    # ---------- negative（B1 回归）：Citation 维可达——注册文献未被正文引用要扣分 ----------
+    rc1 = F.write_project(os.path.join(tmp, "cit"), variant="unused_literature")
+    sc1 = score_of(rc1)
+    check("negative CITATION_GAP 可由诊断产出",
+          "CITATION_GAP" in [d["issue_type"] for d in open_findings(rc1)],
+          str([d["issue_type"] for d in open_findings(rc1)])[:140])
+    check("negative Citation 维不再恒 100（引用问题计入评分）",
+          sc1["dimensions"]["Citation"]["score"] < 100,
+          str(sc1["dimensions"]["Citation"]["score"]))
+    clean_cit = score_of(F.write_project(os.path.join(tmp, "cit0")))
+    check("negative 干净项目 Citation 仍为 100", clean_cit["dimensions"]["Citation"]["score"] == 100)
+
+    # ---------- negative（B2 回归）：REDUNDANT_CONTENT 不再被评分引擎静默丢弃 ----------
+    check("negative REDUNDANT_CONTENT 已映射到维度",
+          QS.ISSUE_DIMENSION.get("REDUNDANT_CONTENT") == "Coherence",
+          str(QS.ISSUE_DIMENSION.get("REDUNDANT_CONTENT")))
+    rr = F.write_project(os.path.join(tmp, "red"), variant="redundant_content")
+    sr = score_of(rr)
+    check("negative 冗余内容项目 Coherence 维被扣分",
+          sr["dimensions"]["Coherence"]["score"] < 100,
+          str(sr["dimensions"]["Coherence"]["deductions"])[:120])
+    s_unmapped = QS.compute(r5, findings=[{"issue_type": "SOME_NEW_TYPE", "severity": "high",
+                                           "affected_nodes": ["X"], "detail": "x",
+                                           "disposition": "block", "status": "open"}])
+    check("negative 未映射 issue_type 走兜底不丢失（标 UNMAPPED 并阻断）",
+          any("UNMAPPED" in x for x in s_unmapped["dimensions"]["Coherence"]["deductions"])
+          and s_unmapped["blocked"] is True,
+          str(s_unmapped["dimensions"]["Coherence"]["deductions"])[:120])
+
     # ---------- boundary：分值下限 0（大量问题不会为负） ----------
     many = [{"issue_type": "CLAIM_OVERSTRENGTH", "severity": "critical", "affected_nodes": [f"CL-00{i}"],
              "detail": "x", "disposition": "block", "status": "open"} for i in range(1, 10)]

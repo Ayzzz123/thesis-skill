@@ -1,5 +1,10 @@
 # Research Intelligence & Agent Loop（v1.5.0）
 
+> **条款映射（脚本内注释引用的 §N 编号 → 本文节）**：脚本/测试注释沿用 v1.5 设计稿的条款编号，
+> 本文正式编号以节号为准。对照：§4 设计注册表→本文 §2；§6 可行性→§3；§7 Claim 强度→§4；
+> §8 诊断类型→§5；§9 根因分析→§5；§10/§11 修复计划与白名单→§6；§12/§13/§20 循环与优先级→§5/§7；
+> §14 评分→§8；§16 数字一致性→§5；§17 范围控制→§5；§24 人工裁决→§6；§26 Gate 集成→§9。
+
 **定位**：在研究完整性层（v1.4，`research-integrity.md`）之上，建立"理解研究设计 → 发现研究缺陷 →
 诊断根因 → 制定修复 → 执行修复 → 重新验证"的闭环能力。全部机制通用：不得为任何题目/学校/测试硬编码。
 
@@ -79,9 +84,15 @@ affected_nodes / root_cause / evidence / recommended_repair / repair_options / c
 auto_repairable / human_review_required / rule。
 
 issue_type（≥ §8 清单）：RQ_METHOD_MISMATCH、DESIGN_EVIDENCE_MISMATCH、METHOD_SELECTION_WEAK、
-SCOPE_OVERFLOW、SCOPE_UNDERFLOW、EVIDENCE_GAP、DATA_GAP、UNRESOLVED_CONFLICT、CLAIM_OVERSTRENGTH、
+SCOPE_OVERFLOW、SCOPE_UNDERFLOW、EVIDENCE_GAP、CITATION_GAP（v1.5.0：RQG-12 派生，注册文献
+未被正文使用，计入评分 Citation 维）、DATA_GAP、UNRESOLVED_CONFLICT、CLAIM_OVERSTRENGTH、
 CONCLUSION_OVERREACH、ABSTRACT_MISMATCH、CALCULATION_GAP、QUANTITATIVE_INCONSISTENCY、
-TRACEABILITY_GAP、ORPHAN_FIGURE、ORPHAN_TABLE、FEASIBILITY_BLOCK。
+TRACEABILITY_GAP、ORPHAN_FIGURE、ORPHAN_TABLE、DUPLICATE_ANALYSIS、REDUNDANT_CONTENT、
+FEASIBILITY_BLOCK。
+**severity 词表统一为小写**（critical/high/medium/low）；诊断引擎入口处归一（RQG 派生项携带
+首字母大写形态时同样归一），评分/循环/Gate 的 lowercase 比较因此不会漏计。
+**评分兜底**：ISSUE_DIMENSION 未登记的新类型自动计入 Coherence 维并标 `(UNMAPPED)`，
+Critical/High 阻断照常生效——"诊断发现问题但评分不认识"结构性不可能。
 
 **disposition**：`auto`（白名单可修）｜`queue`（人工判定类：设计/方法/范围/冲突 → 待裁决期记 NHR）｜
 `block`（其余 critical/high 未解决 = Integrity Failure → BLOCK）。
@@ -111,6 +122,13 @@ before, after, payload, rationale, expected_effect, risk, auto, status∈propose
 
 **禁止（必须人工）**：捏造数据/文献/实验；扩大研究范围；更换核心方法；创建"真实"证据；
 把模拟改真实；解决来源冲突（只登记 CONFLICT + NHR）。
+
+**recompute 受控执行模型（v1.5.0 信任边界）**：自动重算存在执行外部代码的风险面，因此执行器
+只接受一种命令形态——`python <项目根内相对路径>.py [参数]`：解释器一律替换为当前运行解释器
+（登记值被忽略）；拒绝 shell 元字符（无 shell=True）、绝对路径、`..` 越界、`-c`/模块入口与
+不存在的脚本；工作目录固定为项目根；超时 180s；退出码非零/无 OUTPUT 行为一律记失败并留痕，
+绝不静默标 verified。命令文本的唯一来源是项目自身 computations.yaml（用户/Agent 登记，属
+项目内可信数据），该信任边界到此为止，不得扩展到外部输入。
 
 **人工裁决（§24）**：`human-review-queue.yaml`（由 loop 生成）逐项填写
 `decision: approve|reject|modify` + `payload.replacement`（如需改文）+ reviewer/date/note；

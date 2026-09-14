@@ -151,6 +151,12 @@ def apply_variant(regs, texts, design, scope, variant):
     elif variant == "conflict_pending":
         c = next(x for x in regs["conflicts"] if x["id"] == "CONFLICT-001")
         c["status"] = "pending"
+    elif variant == "unused_literature":
+        # 注册文献编号全部不在正文出现 → RQG-12 FAIL(High) → 诊断 CITATION_GAP（B1 可达性）
+        for name in list(texts):
+            if name.startswith("ch"):
+                texts[name] = (texts[name].replace(" [1]", "").replace(" [2]", "")
+                               .replace("[1]", "").replace("[2]", ""))
     else:
         raise KeyError(f"unknown v1_5 variant: {variant}")
 
