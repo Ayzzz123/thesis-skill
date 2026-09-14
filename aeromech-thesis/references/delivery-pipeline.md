@@ -132,6 +132,19 @@ DOCX ≠ 最终验收对象；**Final PDF 为交付真值**。DOCX 的分页、�
 - 模板路径提供了但文件不存在 = 配置错误（退出码 3），**不得静默降级为无模板**；
 - 交付报告中必须如实列出 N/A 项（作为"该维度未核验"的披露，而非通过）。
 
+### 8.3 Research Intelligence 门禁（v1.5）
+
+项目存在 `.aeromech/research/design.yaml` 时，Delivery Gate 追加：
+
+- `research_agent_loop.py` 终态 **BLOCK**（未解决 Critical/High，含 FEASIBILITY_BLOCK /
+  未裁决 queue 超限项）→ 禁止交付；按 loop-log 的 issue→target_stage 映射回退（设计→S3、
+  数据→S6、写作/论断→S7），修复后重跑 loop。
+- 终态 **PASS_WITH_HUMAN_REVIEW** → 允许流程继续，但交付前 `human-review-queue.yaml` 必须
+  全部裁决（approve/modify → apply-human 执行并复检；reject → 诊断关闭），否则保持阻塞。
+- 终态 PASS / PASS_WITH_WARNINGS → 放行；WARN（medium 未解决）与 Low 在交付报告披露。
+- `research_quality_score.py` 8 维评分与 block 状态随交付报告输出；**总分不得作为放行依据**。
+- 旧项目（无 design/scope）：v1.5 工具输出 NOT_APPLICABLE / rc=2，不阻塞（兼容规则同 v1.4）。
+
 ## 9. 脚本工程要求
 
 1. 清晰命令行入口（`python xxx.py <project_root>`）

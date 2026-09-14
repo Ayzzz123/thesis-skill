@@ -83,3 +83,17 @@ reviews:
 
 - **Agent 不代签复核结论**：队列裁决必须来自人类复核者；Agent 只能生成清单、消费裁决、驱动回退。
 - 复核记录随项目归档（`.aeromech/research/human-review.yaml`），作为交付证据的一部分。
+
+## 6. 与 v1.5 Research Agent Loop 的衔接
+
+v1.5 引入第二种人工复核载体（两者并行、互不替代）：
+
+- **本文 §3 的 `human-review.yaml`**：针对 RQG-09/RQG-10 语义项（ok/violation 两值裁决）——机制不变。
+- **`.aeromech/research/human-review-queue.yaml`**：由 `research_agent_loop.py` 生成，针对诊断引擎
+  的 queue 类判定项（设计/方法/范围/冲突/数字人工核对项），裁决格式为
+  `decision: approve|reject|modify` + `payload.replacement` + reviewer/date/note；
+  由 `research_repair.py <root> apply-human` 消费：approve/modify → 执行并记 verified REP；
+  reject → 诊断关闭（rejected_by_human）；不可文本化选项 → deferred（保持待复核，不静默）。
+- queue 项未裁决期间 Gate 记 `PASS_WITH_HUMAN_REVIEW`（与 RQG NHR 语义一致）；
+  交付前两种队列都必须清零或全部裁决（SKILL.md §16/§20、delivery-pipeline.md §8.3）。
+- 七维复核清单（§2）同样适用于 loop 队列项：Agent 不得代签，不得把 deferred 当作通过。

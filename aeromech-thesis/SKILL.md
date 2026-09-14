@@ -6,6 +6,8 @@ description: 航空机械与飞行器维修工程方向的毕业论文/毕业设
 # AeroMech Thesis（AMT）
 
 > 版本：v1.4.1（Stability & Production Hardening：v1.4.0 Research Integrity Layer 之上——① tf_qa 支持无模板运行（模板对照项记 NOT_APPLICABLE，配置错误退出码 3，绝不伪造 PASS）；② RQG 新增 NEEDS_HUMAN_REVIEW 状态：弱证据语境下 RQG-09/RQG-10 不得自动 PASS，生成人工复核清单（claim/evidence/reason/uncertainty）并消费 `.aeromech/research/human-review.yaml` 裁决（Gate：PASS / PASS_WITH_HUMAN_REVIEW / FAIL / ERROR）；规则见 `references/research-human-review.md`；③ 全 RI 层稳定状态码 + severity + reason + remediation，异常/注册表损坏绝不产生 PASS；④ 建立开发目录 Desktop\thesis-skill\aeromech-thesis 与安装目录同步规程（DEV_SYNC.md/INSTALL_SYNC.md + sync.py）；⑤ tests/v1_4_1/ 专项测试；兼容 v1.0 状态机/诚信/QA 与 v1.1.0~v1.4.0 全部能力）
+>
+> 〔v1.5.0 集成中，待 test-7.0 端到端验证通过后发布；Research Intelligence 能力见 §3/§4/§16/§20 与 `references/research-intelligence.md`〕
 
 航空机械与飞行器维修工程方向的毕业论文研究与写作智能助手。服务对象：飞行器维修工程技术、航空机电设备维修、飞机维修、航空机械、航空制造、飞行器制造、机械工程、机械设计制造等专业的高职/本科学生。
 
@@ -31,6 +33,7 @@ description: 航空机械与飞行器维修工程方向的毕业论文/毕业设
 | State Manager | `references/state.md` | `.aeromech/` 状态机：读写、迁移、回退、版本迁移 |
 | Integrity Guard | `references/integrity.md` | 学术诚信红线、资料分级标注、合法替代方案 |
 | Research Integrity | `references/research-integrity.md` | v1.4 研究完整性层：RQ/Evidence/Claim/Conclusion 注册表、追踪图、Synthetic Data Ledger、Computation Provenance、Conflict Resolution、RQG-01~15 门禁（`scripts/research_integrity.py` + `scripts/research_quality_qa.py`） |
+| Research Intelligence | `references/research-intelligence.md` | v1.5 研究智能层：Research Design Registry + Method Selection + Feasibility Gate（`research_design.py`）、统一诊断+根因（`research_diagnosis.py`）、修复计划+白名单自动修复+人工裁决（`research_repair.py`）、Agent Loop（`research_agent_loop.py`）、8 维 Quality Score（`research_quality_score.py`） |
 | Topic | `references/agents/topic.md` | 题目分析（S1）、智能选题（S2） |
 | Research | `references/agents/research.md` | 论文类型判定、研究方案（S3）、文献调研最小流程（S4） |
 | Writing | `references/agents/writing.md` | 章节写作（S7）、图表点位表（S8 轻量版） |
@@ -57,6 +60,11 @@ description: 航空机械与飞行器维修工程方向的毕业论文/毕业设
 | 涉及数据/文献/案例真实性 | `references/integrity.md` |
 | 研究问题/证据/论断/结论登记与追溯（S3 起全程） | `references/research-integrity.md` + `scripts/research_integrity.py` |
 | 研究完整性门禁（S9 前 / Delivery Gate 前） | `scripts/research_quality_qa.py`（RQG-01~15） |
+| 研究设计一致性/方法选择/可行性（S3 起；design.yaml 存在时） | `references/research-intelligence.md` + `scripts/research_design.py`（audit / feasibility，RF-01~10） |
+| 研究诊断/根因/范围/数字一致性（S5 起，写作期随写随查） | `scripts/research_diagnosis.py`（DIAG-XXX，19 类 issue_type；`--no-rqg` 可跳过 RQG 派生） |
+| 修复计划与白名单自动修复/人工裁决执行（诊断产出后） | `scripts/research_repair.py`（plan / execute / apply-human / status；repairs.yaml 全留痕） |
+| 研究闭环迭代（S7 写作期与 S9 交付前） | `scripts/research_agent_loop.py`（≤5 轮；loop-log；终态 BLOCK/PASS_WITH_HUMAN_REVIEW/PASS） |
+| 研究质量评分（S9 报告与交付报告） | `scripts/research_quality_score.py`（8 维；Critical/High 未解决 blocked=True，总分不构成交付依据） |
 | 研究语义人工复核（NHR 队列 / 交付前） | `references/research-human-review.md` + `artifacts/qa/human-review-checklist.md` + `.aeromech/research/human-review.yaml` |
 | 阶段迁移、回退、恢复、状态异常 | `references/state.md` |
 | 学校格式/资料登记 | `references/state.md` §16（materials.yaml + school-format.yaml） |
@@ -95,6 +103,10 @@ description: 航空机械与飞行器维修工程方向的毕业论文/毕业设
 | “参考文献对不对””引用检查” | S4/S7/S9 | Citation Integrity |
 | “帮我检查论文””盲审前体检” | S9 | QA（+ Research Quality Gate） |
 | “这个结论有依据吗””证据链/追溯””数据是不是模拟的” | S3-S9 任意 | Research Integrity |
+| “我的研究设计合理吗”“这个题目可行吗”“方法选得对不对” | S1/S3 | Research Intelligence（design 审计 + feasibility；见 §20） |
+| “检查研究逻辑”“诊断论文问题”“为什么这个结论不成立” | S5-S9 | Research Intelligence（diagnosis + root cause） |
+| “自动修复论文问题”“跑研究闭环”“重新验证” | S7/S9 | Research Intelligence（repair + agent loop） |
+| “给论文研究质量打分” | S9 | Research Intelligence（quality score 8 维） |
 | “准备答辩””答辩PPT” | S10 | Defense |
 | “继续论文”“接着上次” | 断点 | State Manager 恢复协议 |
 
@@ -295,6 +307,7 @@ S10 答辩独立，不受交付层影响。核心原则：
 - **Critical** 禁止交付；**High** 禁止正式终稿交付；**Medium** 允许测试交付但须披露；**Low** 允许并记录。
 - 进入 Delivery Gate 前必须通过：`scripts/pdf_qa.py`（16 项 + TOC-01~10）与 `scripts/visual_regression.py`（占用率 + A/B 类判定）。
 - **v1.4 起**：若项目已建立 Research Integrity 注册表（`.aeromech/research/`），Delivery Gate 还必须通过 `scripts/research_quality_qa.py`（RQG-01~15）；其中 Critical/High 问题（虚构伪装、证据越界、模拟身份丢失、结论断链等）阻止 Delivery Gate，Medium 记录披露。注册表未建立的旧项目不阻塞（记 `not_initialized`）。
+- **v1.5 起**：若项目已建立 Research Intelligence 注册表（design.yaml/scope.yaml），Delivery Gate 还必须通过 `scripts/research_agent_loop.py`——终态 BLOCK（存在未解决 Critical/High，含 FEASIBILITY_BLOCK）禁止交付；PASS_WITH_HUMAN_REVIEW 须完成人工裁决（`.aeromech/research/human-review-queue.yaml`：approve/modify/reject，不静默）后方可交付；PASS_WITH_WARNINGS / WARN 记录披露。`scripts/research_quality_score.py` 8 维评分随交付报告输出，**总分不构成交付依据**（blocked 时仅为展示值）。旧项目（无 design/scope）记 not_initialized，不阻塞（兼容规则同 v1.4）。
 - 研究证据层限制（无真实故障数据、无受控手册、文献全文未获取、机型未绑定等）不得因排版成功被覆盖，仍按 Integrity 机制披露。
 - 脚本清单：`render_mermaid.py`（图渲染+Chrome 自动探测）、`docx_engine.py`（排版原语）、`build_docx.py`（内容层组装器模板，用法 `python build_docx.py <project_root>`）、`update_toc.py`、`export_pdf.py`、`pdf_qa.py`、`visual_regression.py`、`cover_fidelity.py`（CF-01~20 + tblPr 恢复）。所有脚本带命令行入口与退出码。交付链末尾建议执行 `finalize_metadata.py <project_root>`（清 DOCX/PDF 元数据痕迹，须在最后一次 Word 保存之后运行）。
 
@@ -527,3 +540,61 @@ python scripts/research_quality_qa.py --project <root> [--pdf 毕业论文.pdf] 
 2. **NHR 人工复核回路**：弱证据（全 simulated/pending）语境下，RQG-09（摘要身份一致性）与 RQG-10（证据越界）为启发式检查——未命中模式时输出 `NEEDS_HUMAN_REVIEW`，Gate 记 `PASS_WITH_HUMAN_REVIEW`；生成 `human-review-checklist.md`（逐项含 claim/evidence/reason/uncertainty）；按 `references/research-human-review.md` 七维复核后把裁决（ok/violation）写入 `.aeromech/research/human-review.yaml` 并重跑：全部 ok → PASS；任一 violation → FAIL（Critical）。
 3. **无模板 QA**：`tf_qa.py` 省略 `--template`（或 `none`）即可运行——模板对照项（TF-01~04、TF-19）记 `NOT_APPLICABLE`，自含检查照常执行，Delivery Gate 不因无模板而 FAIL；`--template` 指向不存在文件 = 配置错误（退出码 3）。
 4. **开发/安装目录规程**：开发目录 `Desktop	hesis-skilleromech-thesis`（权威源）→ 安装目录 `.qoder-cn\skillseromech-thesis`（部署副本）；用 `Desktop	hesis-skill\sync.py --check/--to-install/--to-dev` 同步（规程见 DEV_SYNC.md / INSTALL_SYNC.md）。测试：`tests/v1_4_1/`（5 个测试文件）。
+
+## 20. Research Intelligence Layer（v1.5.0）
+
+完整规则见 `references/research-intelligence.md`（设计注册表 Schema、RF-01~10、C1~C4×ES1~ES4
+强度规则、issue_type×severity×auto/queue/block 矩阵、白名单操作与 recompute 受控执行模型、
+Loop 契约、评分规范、条款映射）。要点：
+
+**定位**：v1.5 不是新增孤立 QA，而是把 v1.4 的"登记-追溯"升级为"理解设计 → 发现缺陷 →
+诊断根因 → 安全修复 → 重新验证"的闭环；与 RQG 并联汇入 Delivery Gate；**只增不破**——
+不修改既有 RQG 阈值与检查语义，v1.5 工具仅消费其输出。
+
+**新增注册表**（`.aeromech/research/`，随 research_integrity.py 引擎管理）：
+
+```
+design.yaml  DESIGN-001  研究设计（rq_requirements: needs/evidence_requirement；
+                              evidence/data/analysis_plan；expected_outputs；constraints）
+scope.yaml   SCOPE-001   研究范围（included/excluded/assumptions——scope creep 检测依据）
+repairs.yaml REP-001     修复计划（diagnosis_id/operation/before/after/payload/rationale/
+                              risk/auto/status ∈ proposed|applied|verified|rejected）
+```
+
+**工具链与命令**：
+
+```bash
+python scripts/research_design.py <root> audit          # 设计一致性+方法选择审计
+python scripts/research_design.py <root> feasibility    # RF-01~10 → FEASIBLE/CONDITIONALLY_FEASIBLE/INFEASIBLE
+python scripts/research_diagnosis.py <root> [--no-rqg]  # DIAG-XXX（issue_type/根因/影响/修复选项/disposition）
+python scripts/research_repair.py <root> plan           # 白名单生成 REP（人工项入队列，不建单）
+python scripts/research_repair.py <root> execute        # 执行（before/after 留痕+复检）
+python scripts/research_repair.py <root> apply-human    # 消费 human-review-queue.yaml 裁决
+python scripts/research_agent_loop.py <root> [--max-iterations 5]   # 闭环迭代+loop-log+终态
+python scripts/research_quality_score.py <root>         # 8 维评分；blocked 时总分仅为展示值
+```
+
+**四条不可协商规则**：
+
+1. **不得假装设计成立**：RQ 声明 needs/evidence_requirement 与实际方法能力、数据/证据类型
+   不匹配 → RQ_METHOD_MISMATCH / DESIGN_EVIDENCE_MISMATCH（high），不得静默放行；
+   INFEASIBLE → 不得继续正常论文生成（Loop BLOCK，仅限人工设计决策修复：REFRAME/LIMIT/ADD）。
+2. **自动修复仅限白名单**（downgrade_wording / number_sync / recompute / fix_synth_label），
+   全部 before/after 留痕 + 复检；recompute 受控执行模型（仅 `python <项目内>.py`，无 shell，
+   见 research-intelligence.md §6）；禁止捏造数据/文献、扩大范围、更换核心方法、把模拟改真实、
+   静默解决冲突——白名单外一律 NHR。
+3. **总分不得掩盖 Critical**：Overall Score 为展示值；存在未解决 Critical/High（非 queue 类）
+   → blocked=True → Gate BLOCK。人工判定类（设计/方法/范围/冲突）在裁决前记
+   PASS_WITH_HUMAN_REVIEW，裁决驱动修复或关闭（不静默）。
+4. **无限循环禁止**：MAX_ITERATIONS=5（可调 1~20），问题签名无改善即停；loop-log 只记录
+   事实与规则（iteration/issues_before/repair/issues_after/validation/why），不输出内部推理链。
+
+**阶段职责**（细则 research-intelligence.md §10）：S1-S2 建 scope.yaml 初稿；S3 建 design.yaml
+并跑 feasibility（INFEASIBLE 先修设计）；S4 按 evidence_requirement 查设计-证据匹配；
+S5-S6 注册数据/计算（CALC 可带受控 recompute）并跑首轮 diagnosis；S7 写作期间跑 loop
+（自动修复+人工队列随写随清）；S8-S9 交付前 loop 终态须为 PASS / PASS_WITH_WARNINGS /
+PASS_WITH_HUMAN_REVIEW（且复核完成）。与状态机迁移规则（§5/§6）正交：intelligence 层不新增
+迁移边，只在既有阶段内挂产物与门禁证据。
+
+**旧项目兼容**：无 design/scope/repairs 注册表的项目，v1.5 工具全部输出 NOT_APPLICABLE /
+退出码 2 不阻塞（与 v1.4 同策略）。测试：`tests/v1_5/`（13 个测试文件 + run_all.py）。

@@ -476,3 +476,27 @@ thesis-project/                    # 项目根目录
    `references/research-human-review.md` 完成人工复核并把裁决（ok/violation）回填
    `.aeromech/research/human-review.yaml` 后重跑（全部 ok→PASS；任一 violation→FAIL）。
 5. **ERROR（v1.4.1）**：注册表损坏/内部异常 → `gate=ERROR`、退出码 3，禁止当作 PASS 继续下游。
+
+### 17.1 Research Intelligence 阶段职责（v1.5.0）
+
+注册表扩展 `design.yaml` / `scope.yaml` / `repairs.yaml` 位于 `.aeromech/research/`（与 v1.4 同目录、
+同引擎管理；**不改 state schema**）。工具链与规则见 `references/research-intelligence.md`、SKILL.md §20。
+
+| 阶段 | v1.5 动作 | 引擎命令 |
+|---|---|---|
+| S1/S2 | 题目分析后建立 `scope.yaml` 初稿（included/excluded/assumptions） | `research_integrity.py <root> init`（含 v1.5 注册表） |
+| S3 | 建 `design.yaml`（rq_requirements：needs + evidence_requirement；methods 补 provides/selection）；**跑 feasibility，INFEASIBLE 先修设计再前进** | `research_design.py <root> audit` / `feasibility` |
+| S4 | 文献→evidence 后按 evidence_requirement 复查设计-证据匹配 | `research_design.py <root> audit` |
+| S5/S6 | 数据/计算注册（CALC 可带受控 recompute 命令）；跑首轮诊断 | `research_diagnosis.py <root>` |
+| S7 | 写作期间跑闭环（自动修复+人工队列随写随清）；scope creep/数字一致性随写随查 | `research_agent_loop.py <root>` |
+| S8/S9 | 交付前 loop 终态检查 + 评分随 QA 报告输出 | `research_agent_loop.py` / `research_quality_score.py` |
+
+**门禁联动（新增规则，不改变既有迁移边）**：
+1. S3→S5/S7 前进前置条件追加：design.yaml 存在时 `research_design.py feasibility` 不得为 INFEASIBLE
+   （CONDITIONALLY_FEASIBLE 须挂 open_issue，severity=高，target_stage=S3）。旧项目无 design.yaml 不受影响。
+2. `writing.gate_evidence.gate_passed` 升 `passed` 前，除 RQG 无 Critical/High 外，
+   v1.5 诊断未解决项中不得存在 disposition=block 的 critical/high（queue 类须列入 open_issue）。
+3. S9→S10 前进前置条件追加：`.aeromech/research/design.yaml` 存在时，agent loop 终态须为
+   PASS / PASS_WITH_WARNINGS / PASS_WITH_HUMAN_REVIEW 且队列已裁决完毕。
+4. 自动修复产生的 REP 条目（repairs.yaml）视同产物落盘：迁移校验以 repairs.yaml + loop-log 为准，
+   不得以对话声称代替；BLOCK 终态等价 QA 未关闭问题，按 §8 映射回退（设计类→S3，数据类→S6，写作类→S7）。
