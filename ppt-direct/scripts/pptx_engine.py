@@ -166,8 +166,14 @@ class DeckBuilder:
         if slide is None:
             slide = self.prs.slides.add_slide(self._blank_layout)
         self._page_no += 1
+        appendix = bool(getattr(self, "_appendix_flag", False))
+        hidden = False
+        if appendix:
+            # 附录备份页：放映时隐藏（show="0"），需要时按页码直达
+            slide._element.set("show", "0")
+            hidden = True
         rec = {"page": self._page_no, "layout": layout_name, "mode": mode,
-               "appendix": bool(getattr(self, "_appendix_flag", False)),
+               "appendix": appendix, "hidden": hidden,
                "shapes": []}
         self.layout.append(rec)
         return slide, rec

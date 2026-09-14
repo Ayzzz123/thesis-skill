@@ -1,11 +1,11 @@
 ---
 name: ppt-direct
-description: 毕业答辩 PPT 直出 Skill（可回退状态机 S1–S7：需求分析→大纲规划→逐页内容→主题版式→渲染构建→全片QA→交付，python-pptx 直出可编辑 .pptx，内置学术蓝默认主题并支持导入学校模板（提取配色字体+母版版式驱动），渲染级字体度量自动缩字号防溢出，QA 覆盖页数档位/要点数/字数/溢出/配色/对齐/字体/占位符/空页/备注/讲稿时长/表格规模/母版使用率十三项检查并附修复建议）。当用户要求"做答辩PPT""毕业答辩幻灯片""把论文做成PPT""直出pptx""帮我生成答辩演示文稿"时使用。输入源支持三种：aeromech-thesis 论文项目（.aeromech，自动提炼章节内容，联动 S10 答辩产物 ppt-structure.md 板块顺序与 qa-bank.md 问答备份页）、独立论文文件（docx/md）、纯口述信息。内置 .pptdirect/state.yaml 项目状态机，支持跨会话"继续做PPT"恢复。边界：本 Skill 只做答辩演示文稿的生成与质量检查；论文研究与写作本身属 aeromech-thesis；查重降重、对抗式答辩演练、学校模板 docx 终检属 aviation-engineering-thesis，命中即转交不代做。默认中文，默认协作模式。
+description: 毕业答辩 PPT 直出 Skill（可回退状态机 S1–S7：需求分析→大纲规划→逐页内容→主题版式→渲染构建→全片QA→交付，python-pptx 直出可编辑 .pptx，内置学术蓝默认主题并支持导入学校模板（提取配色字体+母版版式驱动），渲染级字体度量自动缩字号防溢出，QA 覆盖页数档位/要点数/字数/溢出/配色/对齐/字体/占位符/空页/备注/讲稿时长/表格规模/母版使用率/标点全半角/附录页隐藏放映十五项检查并附修复建议，S5 同步导出逐字讲稿 speech.md 供排练）。当用户要求"做答辩PPT""毕业答辩幻灯片""把论文做成PPT""直出pptx""帮我生成答辩演示文稿"时使用。输入源支持三种：aeromech-thesis 论文项目（.aeromech，自动提炼章节内容，联动 S10 答辩产物 ppt-structure.md 板块顺序与 qa-bank.md 问答备份页）、独立论文文件（docx/md）、纯口述信息。内置 .pptdirect/state.yaml 项目状态机，支持跨会话"继续做PPT"恢复。边界：本 Skill 只做答辩演示文稿的生成与质量检查；论文研究与写作本身属 aeromech-thesis；查重降重、对抗式答辩演练、学校模板 docx 终检属 aviation-engineering-thesis，命中即转交不代做。默认中文，默认协作模式。
 ---
 
 # PPT Direct（PPD）
 
-> 版本：v1.1.0（表格版式原语 · 渲染级溢出检测与自动缩字号 · 校模母版驱动模式 · 讲稿时长估算 · QA 修复建议与表格规模检查 · aeromech S10 答辩产物联动）
+> 版本：v1.2.0（附录备份页隐藏放映 · 逐字讲稿导出 · 标点/全半角一致性检查 · 表格版式原语 · 渲染级溢出检测与自动缩字号 · 校模母版驱动模式 · 讲稿时长估算 · aeromech S10 答辩产物联动）
 
 毕业答辩 PPT 直出助手：从论文（aeromech 项目或独立文件）到一份 QA 全过、可直接用 PowerPoint/WPS 打开编辑的 `.pptx`。
 
@@ -46,7 +46,7 @@ S1→S2→S3→S4→S5→S6→S7        （主链；S3→S5 跳跃边：主题�
 | "PPT 大纲怎么排""页数怎么分配" | S2 | `references/agents/outline.md` |
 | "这页写什么""帮我填内容" | S3 | `references/agents/content.md` |
 | "用学校模板""换个配色" | S4 | `references/agents/design.md` |
-| "生成PPT""导出" | S5 | `scripts/build_pptx.py` |
+| "生成PPT""导出" | S5 | `scripts/build_pptx.py` + `scripts/speech_export.py` |
 | "检查一下""PPT体检" | S6 | `references/agents/qa.md` + `scripts/ppt_qa.py` |
 | "继续做PPT""接着上次" | 断点 | `references/state.md` 恢复协议 |
 
@@ -80,8 +80,9 @@ ppt-project/
 | `scripts/state_util.py` | init / status / transition，状态机全部读写 | 0/1 |
 | `scripts/ingest_source.py` | 输入源解析：--aeromech / --docx / --md → outline.yaml + deck.yaml 草稿；--aeromech 自动联动 `.aeromech/artifacts/defense/` 的 ppt-structure.md（板块顺序）与 qa-bank.md（问答备份页） | 0/1 |
 | `scripts/theme_extract.py` | 校模 .pptx → theme.yaml（配色/字体/画幅/版式清单 template_layouts） | 0/1 |
-| `scripts/build_pptx.py` | deck.yaml + theme.yaml → .pptx + layout.json；`--template 校模.pptx` 开启母版驱动模式 | 0/1/2 |
-| `scripts/ppt_qa.py` | PPT-01~13 全片 QA → ppt-qa-report.md（含修复建议） | 0=全过 / 1=有 FAIL |
+| `scripts/build_pptx.py` | deck.yaml + theme.yaml → .pptx + layout.json；`--template 校模.pptx` 开启母版驱动模式；appendix 页自动设放映隐藏 | 0/1/2 |
+| `scripts/speech_export.py` | deck.yaml → 逐字讲稿 speech.md（页号/标题/预估时长，附录页标注放映隐藏），排练照读 | 0/1 |
+| `scripts/ppt_qa.py` | PPT-01~15 全片 QA → ppt-qa-report.md（含修复建议） | 0=全过 / 1=有 FAIL |
 
 依赖：`python-pptx`、`PyYAML`、`Pillow`（读 docx 输入源时另需 `python-docx`），见 `requirements.txt`。
 
@@ -90,7 +91,7 @@ ppt-project/
 - **最小必要信息**：S1 只问 论文题目 / 输入源 / 答辩时长或页数档位 / 有无校模，一次最多 1–2 个问题；不足给【假设】继续。
 - 每次实质响应开头给状态条：`【S?·模块】当前阶段 | 已定 | 下一步`。
 - **页数档位**：short（10页档/5分钟）、standard（15页档/8分钟）、long（20页档/10分钟），定义在 `assets/theme-default.yaml` 的 `page_tiers`；PPT-11 按备注总字数 ÷ 250 字/分钟估算讲稿时长，对照档位 duration_min（deck.meta.duration_min 可覆盖），偏差过大给出补/删讲稿建议。
-- 答辩稿（5/8/10 分钟多版本）与预测问题库**不属于本 Skill**：aeromech 项目用户在 aeromech-thesis S10 生成；本 Skill 只把每页讲稿写进 pptx 备注（PPT-10 强制覆盖），并在 --aeromech 输入时自动把 qa-bank.md 的预测问题做成致谢页后的问答备份附录页（不占档位页数）。
+- 答辩稿（5/8/10 分钟多版本）与预测问题库**不属于本 Skill**：aeromech 项目用户在 aeromech-thesis S10 生成；本 Skill 只把每页讲稿写进 pptx 备注（PPT-10 强制覆盖），并在 --aeromech 输入时自动把 qa-bank.md 的预测问题做成致谢页后的问答备份附录页（不占档位页数、放映时自动隐藏，需要时按页码直达）。S5 构建后用 `speech_export.py` 导出 `artifacts/speech.md` 逐字讲稿（页号+预估时长），供用户排练照读。
 
 ## 6. 错误处理
 

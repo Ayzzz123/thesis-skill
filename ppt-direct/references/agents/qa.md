@@ -2,7 +2,7 @@
 
 | 项 | 内容 |
 |---|---|
-| 职责 | 跑 PPT-01~13，按严重度分级，驱动回退修复 |
+| 职责 | 跑 PPT-01~15，按严重度分级，驱动回退修复 |
 | 输入 | 答辩PPT.pptx + layout.json + theme.yaml + deck.yaml |
 | 输出 | `.pptdirect/artifacts/qa/ppt-qa-report.md` + open_issues |
 | 触发 | S6 路由；每次 S5 构建后必跑 |
@@ -26,9 +26,12 @@
 | PPT-11 | 讲稿时长估算（备注字数÷250字/分）在档位 duration_min 的 [0.5×,1.3×] 内；deck.meta.duration_min 可覆盖档位默认 | 一般 | S3（补/删讲稿） |
 | PPT-12 | 表格规模 行≤12、列≤8 | 高 | S3（拆表或精简列） |
 | PPT-13 | 模板模式下母版驱动页 ≥50%（theme 有 template_layouts 时启用） | 一般 | S4（配版式名）或 S5 |
+| PPT-14 | 标点/全半角一致：半角 `,;:?!()"` 紧邻中文、全角数字/拉丁字母/句点（可见文字与备注都查） | 一般 | S3（改标点，不触内容） |
+| PPT-15 | 附录页放映隐藏（实测 pptx show 属性：appendix 页必隐藏、正片必不隐藏） | 一般 | S5（引擎未设 show 属性，报 bug） |
 
 ## 规则
 
 - 每个 FAIL 挂 open_issue（category/target_stage 按上表），修复后重跑 QA，PASS 才关闭。多数检查的 detail 已内置修复建议（如"补 N 页或降档至 short""触底仍溢出（需删字或拆页）"），挂 issue 时直接引用。
 - PPT-04 是引擎侧字体度量估算（PIL 实测字形宽度 + 逐行折行），引擎会自动缩字号（body 下限 14pt、col_title 14pt、table 12pt），sidecar 记录 shrink_from；估算存在误差，用户肉眼复核发现误报/漏报时先核 text_fit.py 的度量参数，不得直接放宽阈值。
+- PPT-14 只查紧邻中文的半角标点与全角数字/拉丁字母，西文缩写、公式、数字小数点在合法白名单内不误报；如报"半角','"多半是中文语境误用英文逗号，改成全角即可。
 - 严重/高未 closed 禁止进 S7；一般/建议可带问题交付但必须在交付说明中披露。

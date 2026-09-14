@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
-"""Test B：构建 + QA（正例全过 / 负例逐项 FAIL / 校模提取 / md 输入源）
+"""Test B：构建 + QA（正例全过 / 负例逐项 FAIL / 校模提取 / md 输入源 /
+标点全半角 / 附录页隐藏放映 / 逐字讲稿导出）
 
 用法: python ppt-direct/tests/test_b_build_and_qa.py
 退出码: 0=全过；1=有失败
@@ -17,6 +18,7 @@ sys.path.insert(0, os.path.join(ROOT, "scripts"))
 import build_pptx
 import ingest_source
 import ppt_qa
+import speech_export
 import theme_extract
 from pptx import Presentation
 
@@ -299,6 +301,36 @@ def main():
               any(s.get("appendix") for s in deck9["slides"]))
         check("S10 附录页数写入 meta",
               deck9["meta"].get("appendix_pages", 0) >= 1)
+
+        # --- PPT-14 标点/全半角负例 ---
+        d10 = os.path.join(tmp, "p14")
+        os.makedirs(d10)
+        p14 = good_slides()
+        p14[3] = {"layout": "content", "title": "标点页",
+                  "bullets": ["第一点,第二点"], "notes": "标点负例"}
+        code, report, _, _ = build_and_qa(d10, write_deck(d10, p14))
+        check("PPT-14 命中半角标点", "PPT-14: FAIL" in report, report)
+
+        # --- PPT-15 附录页隐藏放映 + speech_export（用 S10 deck 真附录） ---
+        d11 = os.path.join(tmp, "s10build")
+        os.makedirs(d11)
+        deck9_path = os.path.join(out9, ".pptdirect", "artifacts", "deck.yaml")
+        code, report, _, layout11 = build_and_qa(d11, deck9_path)
+        check("PPT-15 隐藏放映 PASS", "PPT-15: PASS" in report, report)
+        with open(layout11, encoding="utf-8") as f:
+            lj11 = json.load(f)
+        app_pages = [p for p in lj11["pages"] if p.get("appendix")]
+        check("sidecar 附录页 hidden 标记",
+              bool(app_pages) and all(p.get("hidden") for p in app_pages),
+              str([(p["page"], p.get("hidden")) for p in app_pages]))
+
+        speech_path = os.path.join(d11, "speech.md")
+        speech_export.export(deck9_path, speech_path)
+        speech_md = open(speech_path, encoding="utf-8").read()
+        check("speech.md 含时长估算",
+              "（约" in speech_md and "分钟）" in speech_md, speech_md[:200])
+        check("speech.md 标注附录放映隐藏",
+              "【备份页·放映隐藏】" in speech_md, speech_md[:200])
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 

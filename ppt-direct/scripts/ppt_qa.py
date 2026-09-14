@@ -1,17 +1,18 @@
 # -*- coding: utf-8 -*-
-"""ppt_qa.py — 答辩 PPT 全片 QA（PPT-01~13）
+"""ppt_qa.py — 答辩 PPT 全片 QA（PPT-01~15）
 
 检查真源：layout JSON sidecar（引擎绘制时输出的几何/文字量元数据）+
-pptx slide XML（配色/字体/占位符实测）。原则与 aeromech-thesis 一致：
+pptx slide XML（配色/字体/占位符/放映隐藏实测）。原则与 aeromech-thesis 一致：
 先读对象、后下结论；估算项（溢出）由引擎声明、QA 校验，不重复发明算法。
 
-PPT-01 页数档位        PPT-07 字体合规（latin+ea ∈ 主题声明）
-PPT-02 每页要点数上限   PPT-08 无占位符残留（【待填】）
-PPT-03 每页可见字数上限 PPT-09 无空页
-PPT-04 文本溢出估算     PPT-10 演讲备注覆盖
-PPT-05 配色合规         PPT-11 讲稿时长估算（250 字/分钟）
-PPT-06 同版式对齐一致   PPT-12 表格规模（行≤12、列≤8）
-                        PPT-13 校模母版使用率（≥50%）
+PPT-01 页数档位        PPT-08 无占位符残留（【待填】）
+PPT-02 每页要点数上限   PPT-09 无空页
+PPT-03 每页可见字数上限 PPT-10 演讲备注覆盖
+PPT-04 文本溢出估算     PPT-11 讲稿时长估算（250 字/分钟）
+PPT-05 配色合规         PPT-12 表格规模（行≤12、列≤8）
+PPT-06 同版式对齐一致   PPT-13 校模母版使用率（≥50%）
+PPT-07 字体合规         PPT-14 标点/全半角一致性
+                        PPT-15 附录页隐藏放映
 
 用法: python ppt_qa.py --pptx 答辩PPT.pptx --layout layout.json
         --theme theme.yaml [--deck deck.yaml] --out <报告目录>
@@ -33,6 +34,15 @@ SHRINK_FLOOR_REPORT = {"body": 14, "col_title": 14, "table": 12}
 SPEECH_CPS = 250
 
 
+def _safe_print(s):
+    """控制台编码兜底（如 Windows GBK 打不出 • 等字符时降级替换，不崩）。"""
+    try:
+        print(s)
+    except UnicodeEncodeError:
+        enc = sys.stdout.encoding or "utf-8"
+        print(s.encode(enc, "replace").decode(enc, "replace"))
+
+
 class Report:
     def __init__(self, out_dir):
         self.items = []
@@ -40,13 +50,13 @@ class Report:
 
     def add(self, code, ok, detail):
         self.items.append((code, ok, detail))
-        print(f"  {code} {'PASS' if ok else 'FAIL'} | {detail}")
+        _safe_print(f"  {code} {'PASS' if ok else 'FAIL'} | {detail}")
 
     def save(self):
         os.makedirs(self.out_dir, exist_ok=True)
         path = os.path.join(self.out_dir, "ppt-qa-report.md")
         fails = [c for c, ok, _ in self.items if not ok]
-        lines = ["# PPT QA 报告（PPT-01~13）", ""]
+        lines = ["# PPT QA 报告（PPT-01~15）", ""]
         for code, ok, detail in self.items:
             lines.append(f"- {code}: {'PASS' if ok else 'FAIL'} | {detail}")
         lines += ["", f"结果: {'ALL PASS' if not fails else 'FAIL: ' + ', '.join(fails)}"]
@@ -56,8 +66,8 @@ class Report:
 
 
 def _slide_texts(pptx_path):
-    """逐页提取全部文本（a:t）与配色/字体实测值。"""
-    texts, colors, fonts = [], set(), set()
+    """逐页提取全部文本（a:t）、配色/字体实测值、备注与放映隐藏标记。"""
+    texts, colors, fonts, hiddens = [], set(), set(), []
     with zipfile.ZipFile(pptx_path) as zf:
         slide_names = sorted(
             (n for n in zf.namelist()
@@ -69,6 +79,7 @@ def _slide_texts(pptx_path):
             colors |= {c.upper() for c in
                        re.findall(r'srgbClr val="([0-9A-Fa-f]{6})"', xml)}
             fonts |= set(re.findall(r'typeface="([^"]+)"', xml))
+            hiddens.append(bool(re.search(r'<p:sld\b[^>]*\bshow="0"', xml)))
         notes_names = [n for n in zf.namelist()
                        if re.match(r"ppt/notesSlides/notesSlide\d+\.xml$", n)]
         notes = []
@@ -78,7 +89,42 @@ def _slide_texts(pptx_path):
             body = re.findall(r"<a:t>([^<]*)</a:t>", xml)
             notes.append("".join(t for t in body
                                  if not t.strip().isdigit()).strip())
-    return texts, colors, fonts, notes
+    return texts, colors, fonts, notes, hiddens
+
+
+# PPT-14 标点/全半角：CJK 含全角标点、中文、全角字母数字
+_CJK_OR_FULL = re.compile(r"[\u3000-\u303f\u4e00-\u9fff\uff00-\uffef]")
+_HALF_PUNCT = ",;:?!()\"'"
+_FULL_DIGIT_LATIN = set("０１２３４５６７８９ＡＢＣＤＥＦＧＨＩＪＫＬＭ"
+                        "ＮＯＰＱＲＳＴＵＶＷＸＹＺａｂｃｄｅｆｇｈｉｊｋｌｍ"
+                        "ｎｏｐｑｒｓｔｕｖｗｘｙｚ．")
+
+
+def _punct_issues(page_texts, notes):
+    """返回 (页号, 片段) 列表：半角标点紧邻中文、全角数字/拉丁字母/句点。"""
+    issues = []
+    for i, page in enumerate(page_texts, 1):
+        text = "".join(page)   # 跨 run 拼接后再查邻接，避免 run 切分漏检
+        for m in re.finditer(r"[,;:?!()\"']", text):
+            j = m.start()
+            prev = text[j - 1] if j else ""
+            nxt = text[j + 1] if j + 1 < len(text) else ""
+            if _CJK_OR_FULL.match(prev) or _CJK_OR_FULL.match(nxt):
+                issues.append((i, f"半角{m.group(0)!r} {text[max(0, j - 5):j + 6]!r}"))
+                break
+        for ch in text:
+            if ch in _FULL_DIGIT_LATIN:
+                issues.append((i, f"全角{ch!r}"))
+                break
+    for i, note in enumerate(notes, 1):
+        for m in re.finditer(r"[,;:?!()\"']", note):
+            j = m.start()
+            prev = note[j - 1] if j else ""
+            nxt = note[j + 1] if j + 1 < len(note) else ""
+            if _CJK_OR_FULL.match(prev) or _CJK_OR_FULL.match(nxt):
+                issues.append((f"备注P{i}", f"半角{m.group(0)!r} {note[max(0, j - 5):j + 6]!r}"))
+                break
+    return issues
 
 
 def run_qa(pptx_path, layout_path, theme_path, deck_path, out_dir):
@@ -93,7 +139,7 @@ def run_qa(pptx_path, layout_path, theme_path, deck_path, out_dir):
             deck = yaml.safe_load(f)
     limits = theme.get("limits", {})
     pages = layout["pages"]
-    texts, used_colors, used_fonts, notes = _slide_texts(pptx_path)
+    texts, used_colors, used_fonts, notes, hiddens = _slide_texts(pptx_path)
 
     # PPT-01 页数档位（附修复建议；问答备份等附录页不占档位）
     tier_name = deck.get("meta", {}).get("page_tier", "standard")
@@ -252,6 +298,24 @@ def run_qa(pptx_path, layout_path, theme_path, deck_path, out_dir):
     else:
         rep.add("PPT-13", True, "未启用模板模式（theme 无 template_layouts），跳过")
 
+    # PPT-14 标点/全半角一致性（一般；可见文字 + 备注都查）
+    punct = _punct_issues(texts, notes)
+    detail = ("、".join(f"{pg} {snip}" for pg, snip in punct[:8])
+              + (f"…等 {len(punct)} 处" if len(punct) > 8 else "")) or "无"
+    rep.add("PPT-14", not punct, f"标点/全半角问题: {detail}")
+
+    # PPT-15 附录页隐藏放映（实测 pptx show 属性，不信任 sidecar 自报）
+    appendix_hidden_missing = [
+        pg["page"] for i, pg in enumerate(pages)
+        if pg.get("appendix") and not (i < len(hiddens) and hiddens[i])]
+    body_hidden = [
+        pg["page"] for i, pg in enumerate(pages)
+        if not pg.get("appendix") and i < len(hiddens) and hiddens[i]]
+    ok = not appendix_hidden_missing and not body_hidden
+    rep.add("PPT-15", ok,
+            f"附录页未隐藏: {appendix_hidden_missing or '无'}；"
+            f"正片被误隐藏: {body_hidden or '无'}")
+
     rep.save()
     return 0 if all(ok for _, ok, _ in rep.items) else 1
 
@@ -267,7 +331,7 @@ def main():
     try:
         return run_qa(a.pptx, a.layout, a.theme, a.deck, a.out)
     except Exception as e:
-        print(f"FAIL: {type(e).__name__}: {e}")
+        _safe_print(f"FAIL: {type(e).__name__}: {e}")
         return 1
 
 
