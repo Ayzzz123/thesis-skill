@@ -69,6 +69,14 @@ def main():
     q = load_q(root)["queue"]
     entry = next((e for e in q if e["issue_type"] == "SCOPE_OVERFLOW"), None)
     check("positive 生成人工复核条目", entry is not None)
+    # B9 回归：同一规则命中的不同严重度条目必须拥有不同 diagnosis_id（可分别裁决）
+    r_b9 = F.write_project(os.path.join(tmp, "b9"), variant="scope_creep_two_level")
+    AL.run_loop(r_b9)
+    scope_entries = [e for e in load_q(r_b9)["queue"] if e["issue_type"] == "SCOPE_OVERFLOW"]
+    check("B9 同规则不同严重度 diagnosis_id 不碰撞",
+          len(scope_entries) >= 2 and
+          len({e["diagnosis_id"] for e in scope_entries}) == len(scope_entries),
+          str([(e["diagnosis_id"], e["severity"]) for e in scope_entries]))
     check("positive 条目含问题/根因/证据/选项",
           all(entry.get(k) for k in ("detail", "root_cause", "evidence", "options")), str(entry)[:160])
     check("positive 说明需要人工输入什么", bool(entry["required_input"].strip()))
@@ -103,8 +111,12 @@ def main():
     check("repair 裁决写入成功", hit)
     res2 = AL.run_loop(root)
     q2 = next((e for e in load_q(root)["queue"] if e["issue_type"] == "SCOPE_OVERFLOW"), None)
-    check("repair applied_status=applied", q2 is not None and q2["applied_status"] == "applied",
-          str(q2) if q2 else "条目已关闭")
+    # B9 修复后的正确语义：裁决按 diagnosis_id 精确消费，不得跨条目泄漏——
+    # 已裁决的 high 项被处理，残留 medium 项必须保持"未裁决"等待人工单独处理。
+    check("repair 已裁决条目被消费，残留项不继承裁决（决策按 ID 隔离）",
+          q2 is not None and q2["severity"] == "medium"
+          and q2.get("decision") in (None, "") and q2.get("applied_status") in (None, ""),
+          str({k: q2.get(k) for k in ("severity", "decision", "applied_status")}) if q2 else "closed")
     chapter_text = open(os.path.join(root, ".aeromech", "artifacts", "chapters",
                                      "ch3-fault-modes.md"), encoding="utf-8").read()
     check("repair 裁决指向的原句已被替换", bool(target_sentence) and target_sentence not in chapter_text,
@@ -112,6 +124,15 @@ def main():
     check("repair 一次裁决只处理一句，残留越界句由 high 降为 medium",
           q2 is None or (q2["severity"] == "medium" and "high" in sev_before),
           f"before={sev_before} after={q2['severity'] if q2 else 'closed'}")
+    # 对残留 medium 项单独裁决（队列此刻仅剩该条）→ 下一轮闭环消费并关闭
+    med_sentence = (q2 or {}).get("before_text", "")
+    decide(root, "SCOPE_OVERFLOW", "modify",
+           payload={"replacement": "（背景性提及，保留）"}, reviewer="导师甲", note="确认背景提及")
+    res2b = AL.run_loop(root)
+    check("repair 残留 medium 项单独裁决后被消费",
+          bool(med_sentence) and not any(f["issue_type"] == "SCOPE_OVERFLOW"
+                                         for f in res2b["open_findings"]),
+          str([(f["issue_type"], f["severity"]) for f in res2b["open_findings"]])[:140])
     check("repair 严重度较裁决前下降",
           "high" not in [f["severity"] for f in res2["open_findings"]] or q2 is None,
           str([(f["issue_type"], f["severity"]) for f in res2["open_findings"]])[:120])

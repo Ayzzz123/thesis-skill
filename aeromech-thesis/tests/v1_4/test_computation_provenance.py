@@ -104,6 +104,19 @@ def main():
     s5, rep5 = run_rq(root5)
     check("常量+数据集输入 RQG-14 PASS", item(rep5, "RQG-14")["status"] == "PASS")
 
+    # ---- boundary（B8 回归）：kind=computation 与 calculation 为文档同义词，均计入数据来源 ----
+    root5b = F.write_project(os.path.join(tmp, "computation_kind"))
+    probe(root5b, "computations", "CALC-001",
+          inputs=[{"kind": "computation", "ref": "CALC-002"}])
+    s5b, rep5b = run_rq(root5b)
+    check("kind=computation 输入 RQG-14 不误报（文档 §7 词表被接受）",
+          item(rep5b, "RQG-14")["status"] == "PASS", str(item(rep5b, "RQG-14"))[:120])
+    root5c = F.write_project(os.path.join(tmp, "bad_kind"))
+    probe(root5c, "computations", "CALC-001", inputs=[{"kind": "vibes", "ref": "X-1"}])
+    s5c, rep5c = run_rq(root5c)
+    check("非法 kind 输入仍 FAIL（同义词修复不降标）",
+          item(rep5c, "RQG-14")["status"] == "FAIL", str(item(rep5c, "RQG-14"))[:120])
+
     # ---- boundary：CALC ID 前缀必须为 CALC-XXX ----
     root6 = F.write_project(os.path.join(tmp, "badid"))
     probe(root6, "computations", "CALC-001", id="C-001")

@@ -232,7 +232,9 @@ class _DiagBuilder:
         self._seen.add(key)
         self.n += 1
         auto_ok = bool(auto) and issue_type in AUTO_ELIGIBLE
-        nkey = f"{issue_type}|{','.join(str(x) for x in nodes)}|{rule}"
+        # 稳定 ID 键含 severity：同一（type,nodes,rule）不同严重度的条目必须可分别裁决
+        # （B9：human-review-queue 以 diagnosis_id 为键，ID 碰撞会使一条决定误关多条诊断）
+        nkey = f"{issue_type}|{','.join(str(x) for x in nodes)}|{rule}|{severity}"
         stable = hashlib.md5(nkey.encode("utf-8")).hexdigest()[:6].upper()
         self.items.append({
             "diagnosis_id": f"DIAG-{stable}",
@@ -276,6 +278,16 @@ def _num_close(a, b, lo=0.005, hi=0.10):
     if d <= hi:
         return "near"
     return None
+
+
+def _near_score(cand, fnum, calc_nums):
+    """near 候选的排序键（越小越优）：先算出处的值，其次与摘要值的相对差。"""
+    bnum = cand[0]
+    try:
+        d = abs(float(_num(bnum)) - float(_num(fnum))) / max(abs(float(_num(bnum))), abs(float(_num(fnum))), 1e-9)
+    except (TypeError, ValueError):
+        d = 1.0
+    return (0 if bnum in calc_nums else 1, d)
 
 
 def _sentence_with(text, term):
@@ -593,8 +605,12 @@ def diagnose(root, pdf=None, use_rqg=True):
             if rel == "eq":
                 best = (bnum, "eq")
                 break
-            if rel == "near" and best is None:
-                best = (bnum, "near")
+            if rel == "near":
+                # 基准选择：优先带计算出处的候选，其次相对差最小者——
+                # 不得取"先遇到"的近似值（多个近邻数值并存时会把摘要同步到错误基准）
+                cand = (bnum, "near")
+                if best is None or _near_score(cand, fnum, calc_nums) < _near_score(best, fnum, calc_nums):
+                    best = cand
         if best and best[1] == "near":
             canonical = best[0]
             prov = canonical in calc_nums

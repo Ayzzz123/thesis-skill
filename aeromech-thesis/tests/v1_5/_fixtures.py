@@ -112,6 +112,9 @@ def apply_variant(regs, texts, design, scope, variant):
         design["rq_requirements"][0]["evidence_requirement"] = "real_world_data"
     elif variant == "scope_creep":
         texts["ch3-fault-modes.md"] += "\n\n与飞控系统相比，刹车系统的故障模式具有相似的分析方法。飞控系统的作动器故障也应按相同流程分析。\n"
+    elif variant == "scope_creep_two_level":
+        # 同一规则 SC-01 命中两个 excluded 词且严重度不同（×3=high / ×1=medium）→ B9 场景
+        texts["ch3-fault-modes.md"] += "\n\n飞控系统的分析对象包括飞控计算机、作动器与数据总线。飞控系统的安全评估另有标准。飞控系统的维护按专册执行。\n\n发动机系统的孔探检查也采用类似的组织方式。\n"
     elif variant == "scope_under":
         scope["included"] = scope["included"] + ["起落架收放机构"]
     elif variant == "claim_overstrength":

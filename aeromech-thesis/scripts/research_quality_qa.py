@@ -526,9 +526,12 @@ def _run_impl(root, out_dir=None, pdf=None, verbose=True):
     for c in calcs:
         ins = c.get("inputs") or []
         kinds = {i.get("kind") for i in ins if isinstance(i, dict)}
+        # B8：computation 与 calculation 为文档同义词（research-integrity.md §7/§8 kind ∈
+        # evidence|dataset|computation|reasoning，示例亦见 calculation 写法），两者等价计入
+        # 数据来源；不构成降标——仍要求至少一个指向注册数据/证据/计算的输入。
         if not ins:
             bad14.append(str(c.get("id")) + " 无输入")
-        elif not (kinds & {"dataset", "evidence", "calculation"}):
+        elif not (kinds & {"dataset", "evidence", "calculation", "computation"}):
             bad14.append(str(c.get("id")) + " 输入无数据/证据来源")
         if not str(c.get("formula", "")).strip():
             bad14.append(str(c.get("id")) + " 缺公式")
