@@ -3,4 +3,5 @@
 
 python-pptx>=1.0
 PyYAML>=6.0
+Pillow>=9.0         # text_fit.py 字体度量（文本溢出估算/自动缩字号）
 python-docx>=0.8.11   # 仅 --docx 输入源需要

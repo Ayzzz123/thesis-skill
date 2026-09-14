@@ -11,6 +11,7 @@ colors:
   muted: "999999"       # 页码/脚注
   bg: "FFFFFF"          # 背景
   light: "EAF2FC"       # 主色浅底（面板/目录底纹）
+  zebra: "F7F9FC"       # 表格隔行浅灰（斑马纹）
 
 fonts:
   cjk: "微软雅黑"

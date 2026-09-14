@@ -1,0 +1,191 @@
+build:
+  layout_file: .pptdirect/artifacts/layout.json
+  pptx_file: 答辩PPT.pptx
+deck:
+  file: .pptdirect/artifacts/deck.yaml
+  slides: 18
+last_updated: '2026-09-14T20:55:51+08:00'
+outline:
+  file: .pptdirect/artifacts/outline.yaml
+  sections: 4
+project:
+  advisor: ''
+  date: ''
+  duration_min: 8
+  input_source: aeromech
+  major: 飞行器维修工程技术
+  page_tier: standard
+  presenter: 杨博
+  school: ''
+  source_path: _mvp_test/demo-thesis
+  title: A320 系列飞机起落架收放系统故障模式分析与维修策略研究
+qa:
+  reports: []
+schema_version: '1.0'
+stage:
+  current: S7
+  history:
+  - from: null
+    to: S1
+    type: forward
+    reason: 项目初始化
+    evidence: []
+    issue_id: null
+    override: false
+    ts: '2026-09-14T19:42:06+08:00'
+  - from: S1
+    to: S2
+    type: forward
+    reason: 需求分析完成
+    evidence: []
+    issue_id: null
+    override: false
+    ts: '2026-09-14T19:42:29+08:00'
+  - from: S2
+    to: S3
+    type: forward
+    reason: 大纲定稿
+    evidence: []
+    issue_id: null
+    override: false
+    ts: '2026-09-14T19:42:30+08:00'
+  - from: S3
+    to: S4
+    type: forward
+    reason: 逐页内容落盘
+    evidence: []
+    issue_id: null
+    override: false
+    ts: '2026-09-14T19:42:30+08:00'
+  - from: S4
+    to: S5
+    type: forward
+    reason: 主题=内置默认
+    evidence: []
+    issue_id: null
+    override: false
+    ts: '2026-09-14T19:42:31+08:00'
+  - from: S5
+    to: S6
+    type: forward
+    reason: 构建成功
+    evidence: []
+    issue_id: null
+    override: false
+    ts: '2026-09-14T19:42:51+08:00'
+  - from: S6
+    to: S3
+    type: revert
+    reason: PPT-08 占位符残留 + PPT-03 页11字数超限
+    evidence: []
+    issue_id: ISS-QA1
+    override: false
+    ts: '2026-09-14T19:43:16+08:00'
+  - from: S3
+    to: S5
+    type: forward
+    reason: ISS-QA1 修复返程
+    evidence: []
+    issue_id: null
+    override: false
+    ts: '2026-09-14T19:43:16+08:00'
+  - from: S5
+    to: S6
+    type: forward
+    reason: 重新构建
+    evidence: []
+    issue_id: null
+    override: false
+    ts: '2026-09-14T19:43:18+08:00'
+  - from: S6
+    to: S7
+    type: forward
+    reason: QA 全过，交付
+    evidence: []
+    issue_id: null
+    override: false
+    ts: '2026-09-14T19:43:31+08:00'
+  - from: S7
+    to: S6
+    type: revert
+    reason: 正式内容重做
+    evidence: []
+    issue_id: null
+    override: false
+    ts: '2026-09-14T19:55:38+08:00'
+  - from: S6
+    to: S3
+    type: revert
+    reason: 真实要点+讲稿+论文原图替换草稿
+    evidence: []
+    issue_id: null
+    override: false
+    ts: '2026-09-14T19:55:39+08:00'
+  - from: S3
+    to: S5
+    type: forward
+    reason: deck 正式稿落盘（18页），主题沿用内置默认
+    evidence: []
+    issue_id: null
+    override: false
+    ts: '2026-09-14T19:56:53+08:00'
+  - from: S5
+    to: S6
+    type: forward
+    reason: 构建成功
+    evidence: []
+    issue_id: null
+    override: false
+    ts: '2026-09-14T19:56:55+08:00'
+  - from: S6
+    to: S7
+    type: forward
+    reason: QA 全过 + 视觉目检通过，正式交付
+    evidence: []
+    issue_id: null
+    override: false
+    ts: '2026-09-14T19:57:59+08:00'
+  - from: S7
+    to: S6
+    type: revert
+    reason: v1.1.0 表格版式重做
+    evidence: []
+    issue_id: null
+    override: false
+    ts: '2026-09-14T20:55:50+08:00'
+  - from: S6
+    to: S3
+    type: revert
+    reason: 两张内容页改表格页（FMEA/策略）+ notes 扩写
+    evidence: []
+    issue_id: null
+    override: false
+    ts: '2026-09-14T20:55:50+08:00'
+  - from: S3
+    to: S5
+    type: forward
+    reason: deck 正式稿更新落盘（18页，含 duration_min:8）
+    evidence: []
+    issue_id: null
+    override: false
+    ts: '2026-09-14T20:55:50+08:00'
+  - from: S5
+    to: S6
+    type: forward
+    reason: 构建成功
+    evidence: []
+    issue_id: null
+    override: false
+    ts: '2026-09-14T20:55:51+08:00'
+  - from: S6
+    to: S7
+    type: forward
+    reason: PPT-01~13 全过 + COM 视觉目检通过，正式交付
+    evidence: []
+    issue_id: null
+    override: false
+    ts: '2026-09-14T20:55:51+08:00'
+  open_issues: []
+theme:
+  file: .pptdirect/artifacts/theme.yaml
+  mode: builtin

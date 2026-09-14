@@ -18,7 +18,8 @@ import xml.etree.ElementTree as ET
 import yaml
 
 NS = {"a": "http://schemas.openxmlformats.org/drawingml/2006/main",
-      "p": "http://schemas.openxmlformats.org/presentationml/2006/main"}
+      "p": "http://schemas.openxmlformats.org/presentationml/2006/main",
+      "r": "http://schemas.openxmlformats.org/officeDocument/2006/relationships"}
 
 # clrScheme 语义槽位 → ppt-direct 调色板槽位的默认映射
 SLOT_MAP = {"dk1": "text", "lt1": "bg", "dk2": "text", "lt2": "light",
@@ -31,6 +32,57 @@ def _theme_xml(zf):
         if re.match(r"ppt/theme/theme\d+\.xml$", name):
             return zf.read(name)
     return None
+
+
+def _layout_placeholders(zf, fname):
+    path = f"ppt/slideLayouts/{fname}"
+    if not fname or path not in zf.namelist():
+        return []
+    lxml = ET.fromstring(zf.read(path))
+    return [{"idx": int(ph.get("idx", -1)), "type": ph.get("type", "")}
+            for ph in lxml.findall(".//p:ph", NS)]
+
+
+def scan_template_layouts(template_pptx):
+    """扫描校模 .pptx 的版式清单：返回 [{name, placeholders: [{idx, type}]}]。
+    优先读 slideMaster 的 sldLayoutIdLst（含版式名），缺失时兜底直接枚举
+    slideLayoutN.xml（取 cSld@name）。渲染引擎与提取器共用。
+    """
+    with zipfile.ZipFile(template_pptx) as zf:
+        layouts = []
+        masters = sorted((n for n in zf.namelist()
+                          if re.match(r"ppt/slideMasters/slideMaster\d+\.xml$", n)),
+                         key=lambda n: int(re.search(r"(\d+)", n).group(1)))
+        if masters:
+            master_name = masters[0]
+            rels_name = (master_name.replace("slideMasters/", "slideMasters/_rels/")
+                         + ".rels")
+            rid2file = {}
+            if rels_name in zf.namelist():
+                for rel in ET.fromstring(zf.read(rels_name)):
+                    target = rel.get("Target", "")
+                    if "slideLayout" in target:
+                        rid2file[rel.get("Id")] = os.path.basename(target)
+            master = ET.fromstring(zf.read(master_name))
+            for sld in master.findall(".//p:sldLayoutIdLst/p:sldLayout", NS):
+                rid = sld.get("{%s}id" % NS["r"])
+                fname = rid2file.get(rid, "")
+                layouts.append({"name": sld.get("name", "") or fname,
+                                "placeholders": _layout_placeholders(zf, fname)})
+        if not layouts:  # 兜底：模板未写 sldLayoutIdLst 时直接枚举版式文件
+            for fname in sorted(
+                    (n for n in zf.namelist()
+                     if re.match(r"ppt/slideLayouts/slideLayout\d+\.xml$", n)),
+                    key=lambda n: int(re.search(r"(\d+)", n).group(1))):
+                lxml = ET.fromstring(zf.read(fname))
+                csld = lxml.find("p:cSld", NS)
+                name = csld.get("name") if csld is not None else ""
+                layouts.append({"name": name or os.path.basename(fname),
+                                "placeholders": [
+                                    {"idx": int(ph.get("idx", -1)),
+                                     "type": ph.get("type", "")}
+                                    for ph in lxml.findall(".//p:ph", NS)]})
+        return layouts
 
 
 def extract(template_pptx):
@@ -81,7 +133,8 @@ def extract(template_pptx):
     colors.setdefault("primary", "4A90E2")
     fonts["cjk"] = fonts["cjk"] or "微软雅黑"
     fonts["latin"] = fonts["latin"] or "Calibri"
-    return {"size": size, "colors": colors, "fonts": fonts}
+    return {"size": size, "colors": colors, "fonts": fonts,
+            "template_layouts": scan_template_layouts(template_pptx)}
 
 
 def main():
@@ -103,10 +156,11 @@ def main():
                  "size": info["size"]})
     base["colors"].update(info["colors"])
     base["fonts"].update(info["fonts"])
+    base["template_layouts"] = info["template_layouts"]
     with open(a.out, "w", encoding="utf-8") as f:
         yaml.safe_dump(base, f, allow_unicode=True, sort_keys=False)
     print(f"OK: {a.out} (size={info['size']}, primary=#{base['colors']['primary']}, "
-          f"cjk={base['fonts']['cjk']})")
+          f"cjk={base['fonts']['cjk']}, layouts={len(info['template_layouts'])})")
     return 0
 
 

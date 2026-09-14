@@ -16,7 +16,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from pptx_engine import DeckBuilder, load_theme, PLACEHOLDER_MARK
 
 LAYOUTS = {"cover", "toc", "section", "content", "two_column",
-           "image_text", "closing"}
+           "image_text", "table", "closing"}
 
 
 def _bullets(raw):
@@ -34,14 +34,16 @@ def _bullets(raw):
     return out
 
 
-def build(deck_path, theme_path, out_pptx, layout_json=None):
+def build(deck_path, theme_path, out_pptx, layout_json=None, template=None):
     with open(deck_path, "r", encoding="utf-8") as f:
         deck = yaml.safe_load(f)
     if not isinstance(deck, dict) or "slides" not in deck:
         raise ValueError("deck.yaml 缺少 slides 段")
     meta = deck.get("meta", {})
     theme = load_theme(theme_path)
-    d = DeckBuilder(theme)
+    if template and not os.path.isfile(template):
+        raise FileNotFoundError(f"模板文件不存在: {template}")
+    d = DeckBuilder(theme, template_path=template)
 
     slides = deck["slides"]
     toc_items = None  # 自动从 section 页收集
@@ -51,6 +53,7 @@ def build(deck_path, theme_path, out_pptx, layout_json=None):
         if layout not in LAYOUTS:
             raise ValueError(f"第 {i} 页 layout 未知: {layout!r}，合法值 {sorted(LAYOUTS)}")
         notes = s.get("notes", "")
+        d._appendix_flag = bool(s.get("appendix"))
 
         if layout == "cover":
             d.add_cover(title=s.get("title", meta.get("title", PLACEHOLDER_MARK)),
@@ -85,11 +88,26 @@ def build(deck_path, theme_path, out_pptx, layout_json=None):
                              s.get("image", ""), [t for _, t in _bullets(s.get("bullets"))],
                              notes=notes, image_side=s.get("image_side", "left"),
                              caption=s.get("caption", ""))
+        elif layout == "table":
+            tbl = s.get("table", {})
+            if not tbl.get("headers") or not tbl.get("rows"):
+                raise ValueError(f"第 {i} 页 table 版式缺 headers/rows")
+            d.add_table(s.get("title", PLACEHOLDER_MARK),
+                        tbl["headers"], tbl["rows"], notes=notes,
+                        kicker=s.get("kicker", ""),
+                        highlight_rows=tbl.get("highlight_rows"),
+                        col_weights=tbl.get("col_weights"))
         elif layout == "closing":
             d.add_closing(title=s.get("title", "恳请各位老师批评指正"),
                           sub=s.get("sub", "谢谢聆听"), notes=notes)
 
     d.save(out_pptx, layout_json)
+    if template:
+        tpl_used = sum(1 for p in d.layout
+                       if p.get("mode", "").startswith("template:"))
+        print(f"OK: {out_pptx} (母版驱动 {tpl_used}/{len(d.layout)} 页)")
+    else:
+        print(f"OK: {out_pptx}")
     return out_pptx
 
 
@@ -99,9 +117,10 @@ def main():
     ap.add_argument("--theme", required=True)
     ap.add_argument("--out", required=True)
     ap.add_argument("--layout", default=None, help="layout JSON sidecar 输出路径")
+    ap.add_argument("--template", default=None, help="校模 .pptx（母版驱动模式）")
     a = ap.parse_args()
     try:
-        out = build(a.deck, a.theme, a.out, a.layout)
+        out = build(a.deck, a.theme, a.out, a.layout, a.template)
     except (ValueError, FileNotFoundError, yaml.YAMLError) as e:
         print(f"FAIL: {e}")
         return 1

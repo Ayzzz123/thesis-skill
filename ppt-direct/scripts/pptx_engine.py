@@ -29,12 +29,38 @@ from pptx.enum.text import PP_ALIGN, MSO_ANCHOR
 from pptx.enum.shapes import MSO_SHAPE
 from pptx.oxml.ns import qn
 
+try:
+    from text_fit import get_fitter
+    _FIT = get_fitter()
+except Exception:          # 度量模块不可用时不阻塞渲染，回退启发式
+    _FIT = None
+
 CM_PER_PT = 1 / 28.3465  # 1pt = 0.3528mm
 
 SIZES = {"16:9": (33.867, 19.05), "4:3": (25.4, 19.05)}
 
 # 占位符残留标记（PPT-08 与内容模块共用此约定）
 PLACEHOLDER_MARK = "【待填】"
+
+# 自动缩字号下限（按 kind）
+SHRINK_FLOOR = {"body": 14, "col_title": 14, "table": 12}
+
+# 校模版式 → 引擎版式的名称启发式（按顺序匹配，先命中者胜）
+TEMPLATE_HINTS = {
+    "cover": ("封面", "标题幻灯片", "title slide", "title only"),
+    "toc": ("目录", "agenda", "table of contents"),
+    "section": ("节标题", "节", "section", "章节"),
+    "two_column": ("两栏", "比较", "comparison", "two content"),
+    "image_text": ("图片", "picture", "image", "图文"),
+    "table": ("表格", "table"),
+    "closing": ("结束", "结尾", "致谢", "closing", "thank"),
+    "content": ("标题和内容", "title and content", "内容", "content", "标题"),
+}
+
+try:
+    from theme_extract import scan_template_layouts
+except Exception:
+    scan_template_layouts = None
 
 
 def load_theme(path):
@@ -65,7 +91,7 @@ def _set_run_font(run, theme, size_pt, bold=False, color="text"):
 
 
 def est_lines(text, font_pt, box_w_cm):
-    """按字符宽度估算折行数：CJK≈1.0em，数字/字母≈0.52em，空格≈0.3em。"""
+    """按字符宽度估算折行数（无字体度量时的回退）。"""
     w = 0.0
     for ch in text:
         w += font_pt * (1.0 if ord(ch) > 0x2E7F else (0.3 if ch == " " else 0.52))
@@ -74,22 +100,75 @@ def est_lines(text, font_pt, box_w_cm):
 
 
 class DeckBuilder:
-    def __init__(self, theme):
+    def __init__(self, theme, template_path=None):
         self.theme = theme
-        self.w_cm, self.h_cm = SIZES[theme.get("size", "16:9")]
-        self.prs = Presentation()
-        self.prs.slide_width = Cm(self.w_cm)
-        self.prs.slide_height = Cm(self.h_cm)
-        self.blank = self.prs.slide_layouts[6]
+        self.template_path = template_path
+        self._tpl_inventory = None
+        self._blank_layout = None
+        if template_path and os.path.isfile(template_path):
+            if scan_template_layouts is None:
+                raise ValueError("模板模式需要 theme_extract 模块可用")
+            self.prs = Presentation(template_path)
+            # 以校模画幅为准（覆盖 theme 的 16:9/4:3 默认）
+            self.w_cm = round(self.prs.slide_width / 914400 * 2.54, 2)
+            self.h_cm = round(self.prs.slide_height / 914400 * 2.54, 2)
+            ratio = self.w_cm / max(self.h_cm, 0.01)
+            self.theme["size"] = (
+                "16:9" if abs(ratio - 16 / 9) < 0.05 else
+                ("4:3" if abs(ratio - 4 / 3) < 0.05
+                 else f"{self.w_cm:.2f}x{self.h_cm:.2f}"))
+            self._tpl_inventory = scan_template_layouts(template_path)
+            blanks = [l for l in self.prs.slide_layouts
+                      if "空白" in (l.name or "")
+                      or "blank" in (l.name or "").lower()]
+            self._blank_layout = (blanks[0] if blanks
+                                  else self.prs.slide_layouts[
+                                      min(6, len(self.prs.slide_layouts) - 1)])
+        else:
+            self.w_cm, self.h_cm = SIZES[theme.get("size", "16:9")]
+            self.prs = Presentation()
+            self.prs.slide_width = Cm(self.w_cm)
+            self.prs.slide_height = Cm(self.h_cm)
+            self._blank_layout = self.prs.slide_layouts[6]
         self.layout = []          # layout JSON sidecar 数据
         self._page_no = 0
+        self._appendix_flag = False   # build_pptx 逐页设置的附录标记
 
     # ---------- 内部原语 ----------
 
+    def _match_layout(self, layout_name):
+        """按版式名启发式匹配校模版式；取命中提示词最长（最具体）的版式，
+        无命中返回 None（走重建）。"""
+        hints = TEMPLATE_HINTS.get(layout_name, ())
+        best, best_score = None, 0
+        for lay in self.prs.slide_layouts:
+            name_l = (lay.name or "").lower()
+            for h in hints:
+                if h in name_l and len(h) > best_score:
+                    best, best_score = lay, len(h)
+        return best
+
+    @staticmethod
+    def _strip_placeholders(slide):
+        """移除校模版式自带占位符（母版/版式背景图形保留）。"""
+        for ph in list(slide.placeholders):
+            ph._element.getparent().remove(ph._element)
+
     def _new_slide(self, layout_name):
-        slide = self.prs.slides.add_slide(self.blank)
+        mode = "rebuild"
+        slide = None
+        if self._tpl_inventory is not None:
+            chosen = self._match_layout(layout_name)
+            if chosen is not None:
+                slide = self.prs.slides.add_slide(chosen)
+                self._strip_placeholders(slide)
+                mode = "template:" + (chosen.name or "?")
+        if slide is None:
+            slide = self.prs.slides.add_slide(self._blank_layout)
         self._page_no += 1
-        rec = {"page": self._page_no, "layout": layout_name, "shapes": []}
+        rec = {"page": self._page_no, "layout": layout_name, "mode": mode,
+               "appendix": bool(getattr(self, "_appendix_flag", False)),
+               "shapes": []}
         self.layout.append(rec)
         return slide, rec
 
@@ -114,6 +193,19 @@ class DeckBuilder:
         tf.word_wrap = True
         tf.vertical_anchor = anchor
         pt = self.theme["sizes"][size_key]
+
+        # 度量级拟合：可自动缩字号（title 类不缩）
+        floor = SHRINK_FLOOR.get(kind)
+        shrink_from = None
+        if _FIT is not None:
+            pt, est, need_h, overflow, shrink_from = _FIT.fit(
+                lines, self.theme["fonts"]["cjk"], pt, w, h,
+                floor_pt=floor, line_spacing=line_spacing)
+        else:
+            est = sum(est_lines(s, pt, w) for s in lines)
+            need_h = est * pt * line_spacing * CM_PER_PT + 0.15
+            overflow = need_h > h + 0.05
+
         for i, s in enumerate(lines):
             p = tf.paragraphs[0] if i == 0 else tf.add_paragraph()
             p.alignment = align
@@ -122,15 +214,14 @@ class DeckBuilder:
             run = p.add_run()
             run.text = s
             _set_run_font(run, self.theme, pt, bold=bold, color=color)
-        # fit 元数据（引擎侧估算，QA 侧校验）
-        est = sum(est_lines(s, pt, w) for s in lines)
-        need_h = est * pt * line_spacing * CM_PER_PT + 0.15
+        # fit 元数据（引擎侧实测，QA 侧校验）
         rec["shapes"].append({
             "kind": kind, "box_cm": [round(x, 2), round(y, 2), round(w, 2), round(h, 2)],
             "font_pt": pt, "size_key": size_key, "paras": len(lines),
             "chars": sum(len(s) for s in lines),
             "est_lines": est, "est_need_h_cm": round(need_h, 2),
-            "est_overflow": need_h > h + 0.05,
+            "est_overflow": overflow,
+            "shrink_from": shrink_from,
         })
         return tb
 
@@ -263,6 +354,99 @@ class DeckBuilder:
         self._text(slide, rec, tx, 3.4, self.w_cm - 4.4 - img_w,
                    self.h_cm - 4.8, ["• " + b for b in bullets],
                    size_key="body", kind="body", space_after=8)
+        self._footer(slide)
+        if notes:
+            slide.notes_slide.notes_text_frame.text = notes
+        return self
+
+    def add_table(self, title, headers, rows, notes="", kicker="",
+                  highlight_rows=None, col_weights=None, cell_size=13):
+        """headers: list[str]；rows: list[list[str]]；highlight_rows: 行号集合。
+        col_weights: 每列宽度权重（默认均分）。"""
+        slide, rec = self._new_slide("table")
+        self._rect(slide, 0, 0, self.w_cm, 0.35, fill="primary")
+        if kicker:
+            self._text(slide, rec, 2.0, 0.9, self.w_cm - 4.0, 0.9, [kicker],
+                       size_key="small", color="muted", kind="kicker")
+        self._text(slide, rec, 2.0, 1.35 if not kicker else 1.75,
+                   self.w_cm - 4.0, 1.6, [title], size_key="h1", bold=True,
+                   kind="title")
+
+        n_rows, n_cols = len(rows) + 1, len(headers)
+        if any(len(r) != n_cols for r in rows):
+            raise ValueError("表格列数与表头不一致")
+        t_x, t_y, t_w = 2.2, 3.4, self.w_cm - 4.4
+        t_h = self.h_cm - 4.8
+        weights = col_weights or [1.0] * n_cols
+        total_w = sum(weights)
+        gtable = slide.shapes.add_table(n_rows, n_cols, Cm(t_x), Cm(t_y),
+                                        Cm(t_w), Cm(t_h)).table
+        col_w = [t_w * w / total_w for w in weights]
+        for i, cw in enumerate(col_w):
+            gtable.columns[i].width = Cm(cw)
+
+        # 单元格度量：先估行高，整体超限则缩字号（下限 12pt）
+        def render(size_pt):
+            total_need = 0.0
+            for r_i in range(n_rows):
+                row_max = 0.0
+                for c_i in range(n_cols):
+                    txt = str(headers[c_i]) if r_i == 0 else str(rows[r_i - 1][c_i])
+                    if _FIT is not None:
+                        need_h, lines = _FIT.need_height(
+                            [txt], self.theme["fonts"]["cjk"], size_pt,
+                            col_w[c_i] - 0.4, line_spacing=1.15)
+                        row_max = max(row_max, need_h)
+                    else:
+                        row_max = max(row_max, size_pt * 1.3 * CM_PER_PT)
+                total_need += row_max
+            return total_need
+
+        final_size, shrink_from = cell_size, None
+        need_h = render(final_size)
+        while need_h > t_h and final_size > SHRINK_FLOOR["table"]:
+            if shrink_from is None:
+                shrink_from = final_size
+            final_size -= 1
+            need_h = render(final_size)
+
+        hl = set(highlight_rows or [])
+        for r_i in range(n_rows):
+            for c_i in range(n_cols):
+                cell = gtable.cell(r_i, c_i)
+                cell.margin_left = Cm(0.15)
+                cell.margin_right = Cm(0.15)
+                cell.margin_top = Cm(0.05)
+                cell.margin_bottom = Cm(0.05)
+                cell.vertical_anchor = MSO_ANCHOR.MIDDLE
+                txt = str(headers[c_i]) if r_i == 0 else str(rows[r_i - 1][c_i])
+                p = cell.text_frame.paragraphs[0]
+                run = p.add_run()
+                run.text = txt
+                if r_i == 0:
+                    cell.fill.solid()
+                    cell.fill.fore_color.rgb = _rgb(self.theme["colors"]["primary"])
+                    _set_run_font(run, self.theme, final_size, bold=True,
+                                  color="bg")
+                else:
+                    is_hl = (r_i - 1) in hl
+                    cell.fill.solid()
+                    cell.fill.fore_color.rgb = _rgb(
+                        self.theme["colors"]["light"] if is_hl else
+                        (self.theme["colors"]["bg"] if r_i % 2 == 1
+                         else self.theme["colors"].get("zebra", "F7F9FC")))
+                    _set_run_font(run, self.theme, final_size,
+                                  bold=is_hl)
+        rec["shapes"].append({
+            "kind": "table", "box_cm": [round(t_x, 2), round(t_y, 2),
+                                        round(t_w, 2), round(t_h, 2)],
+            "font_pt": final_size, "rows": n_rows, "cols": n_cols,
+            "chars": sum(len(str(c)) for r in rows for c in r)
+                     + sum(len(h) for h in headers),
+            "est_need_h_cm": round(need_h, 2),
+            "est_overflow": need_h > t_h + 0.05,
+            "shrink_from": shrink_from,
+        })
         self._footer(slide)
         if notes:
             slide.notes_slide.notes_text_frame.text = notes
