@@ -1,0 +1,6 @@
+TF-16 参考文献样式 PASS | 条目数=18(≥5)；不足如实披露不凑数
+TF-17 附录结构 PASS | 附录标题=['附录A  FMEA评分准则详细判', '附录B  演示数据替换真实数据的']（A/B/C 排序）
+TF-18 致谢结构 PASS | 致谢字数≈271（≤500）
+TF-19 页面尺寸/边距 PASS | A4≈(21.0, 29.7); 成品边距 {(2.0, 2.0)} ? 模板 {(2.0, 2.0)}
+TF-20 PDF视觉对照 PASS | 页对=[('封面', 1, 1), ('声明', 2, 2), ('中文摘要', 4, 4), ('ABSTRACT', 5, 5), ('目录', 3, 3), ('正文样例',
+report: C:\Users\29603\.qoder-cn\skills\aeromech-thesis\tests\v1_4\regression/t40-tf\tf-qa-report.md

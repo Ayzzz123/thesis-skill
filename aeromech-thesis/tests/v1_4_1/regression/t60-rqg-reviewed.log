@@ -1,0 +1,18 @@
+  RQG-00 注册表结构校验: PASS | 结构/引用完整（35 条记录）
+  RQG-01 研究问题明确: PASS | RQ 注册 3 条，字段完整
+  RQG-02 研究目标与研究问题对应: PASS | 目标与问题文本关联（共享实词）
+  RQG-03 研究方法能够回答研究问题: PASS | 方法链接齐备且见于文本
+  RQG-04 研究方法有明确选择依据: PASS | 方法 3 个，依据齐备
+  RQG-05 核心数据有来源: PASS | 数据集 2 个来源齐备
+  RQG-06 模拟数据有明确标记: PASS | 模拟数据集 2 个，label 完整且见于文档
+  RQG-07 核心分析有数据/证据支撑: PASS | 分析 3 个输入齐备
+  RQG-08 核心结论可以追溯到分析: PASS | 结论 3 条链路齐备
+  RQG-09 摘要结论与正文结论一致: NEEDS_HUMAN_REVIEW | 已通过自动启发式检查；模拟身份/结论一致性须人工复核（见 human-review-checklist.md）
+  RQG-10 不存在超出证据范围的结论: NEEDS_HUMAN_REVIEW | 自动检查未见越界模式；3 项弱证据论断/结论待人工复核（见 human-review-checklist.md）
+  RQG-11 图表参与论证（非孤立存在）: PASS | 图表 5 个均具论证链接
+  RQG-12 关键参考文献确实被正文使用: PASS | 注册文献证据 2 条均在正文被引用
+  RQG-13 正文重要数字可追溯: PASS | 含数字句 24，可追溯 17（71%，>=50%）
+  RQG-14 计算结果可以追溯到输入: PASS | 计算 2 个输入/公式/验证齐备
+  RQG-15 研究限制与证据能力匹配: PASS | 限制论述存在且与证据身份匹配
+  RQG-HR 人工复核队列: PASS | 队列 4 项均已裁决（resolved=4, violations=0）
+report: .aeromech/artifacts/qa\research-quality-report.md
