@@ -4,7 +4,7 @@ build:
 deck:
   file: .pptdirect/artifacts/deck.yaml
   slides: 18
-last_updated: '2026-09-14T21:04:56+08:00'
+last_updated: '2026-09-14T21:24:19+08:00'
 outline:
   file: .pptdirect/artifacts/outline.yaml
   sections: 4
@@ -217,6 +217,44 @@ stage:
     issue_id: null
     override: false
     ts: '2026-09-14T21:04:56+08:00'
+  - from: S7
+    to: S3
+    type: revert
+    reason: v1.3.0：研究内容与方法链页改为 flow 技术路线图版式
+    evidence:
+    - deck.yaml
+    issue_id: null
+    override: false
+    ts: '2026-09-14T21:24:19+08:00'
+  - from: S3
+    to: S5
+    type: forward
+    reason: flow 版式内容落盘，主题沿用
+    evidence:
+    - deck.yaml
+    issue_id: null
+    override: false
+    ts: '2026-09-14T21:24:19+08:00'
+  - from: S5
+    to: S6
+    type: forward
+    reason: 构建成功（v1.3.0 引擎：flow 版式）
+    evidence:
+    - 答辩PPT.pptx
+    - layout.json
+    - speech.md
+    issue_id: null
+    override: false
+    ts: '2026-09-14T21:24:19+08:00'
+  - from: S6
+    to: S7
+    type: forward
+    reason: PPT-01~16 全过（含 --source 数据溯源）+ COM 渲染验证通过，v1.3.0 交付
+    evidence:
+    - qa/ppt-qa-report.md
+    issue_id: null
+    override: false
+    ts: '2026-09-14T21:24:19+08:00'
   open_issues: []
 theme:
   file: .pptdirect/artifacts/theme.yaml

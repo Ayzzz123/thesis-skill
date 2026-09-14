@@ -2,12 +2,12 @@
 
 | 项 | 内容 |
 |---|---|
-| 职责 | 跑 PPT-01~15，按严重度分级，驱动回退修复 |
-| 输入 | 答辩PPT.pptx + layout.json + theme.yaml + deck.yaml |
+| 职责 | 跑 PPT-01~16，按严重度分级，驱动回退修复 |
+| 输入 | 答辩PPT.pptx + layout.json + theme.yaml + deck.yaml（PPT-16 另需 --source 输入源） |
 | 输出 | `.pptdirect/artifacts/qa/ppt-qa-report.md` + open_issues |
 | 触发 | S6 路由；每次 S5 构建后必跑 |
 
-执行：`python scripts/ppt_qa.py --pptx <pptx> --layout <layout.json> --theme <theme.yaml> --deck <deck.yaml> --out .pptdirect/artifacts/qa`（退出码 0 才可进 S7）。
+执行：`python scripts/ppt_qa.py --pptx <pptx> --layout <layout.json> --theme <theme.yaml> --deck <deck.yaml> [--source <输入源目录/md/docx>] --out .pptdirect/artifacts/qa`（退出码 0 才可进 S7）。
 
 ## 检查项与回退映射
 
@@ -28,10 +28,12 @@
 | PPT-13 | 模板模式下母版驱动页 ≥50%（theme 有 template_layouts 时启用） | 一般 | S4（配版式名）或 S5 |
 | PPT-14 | 标点/全半角一致：半角 `,;:?!()"` 紧邻中文、全角数字/拉丁字母/句点（可见文字与备注都查） | 一般 | S3（改标点，不触内容） |
 | PPT-15 | 附录页放映隐藏（实测 pptx show 属性：appendix 页必隐藏、正片必不隐藏） | 一般 | S5（引擎未设 show 属性，报 bug） |
+| PPT-16 | 数据溯源：slide 可见数字 token（≥2 位整数或小数，来自要点/表格/flow steps/图注，不含标题眉标页码备注）必须能在输入源全文找到；未提供 --source 时跳过 | 高 | S3（改回源数据）或用户确认口径后登记豁免 |
 
 ## 规则
 
 - 每个 FAIL 挂 open_issue（category/target_stage 按上表），修复后重跑 QA，PASS 才关闭。多数检查的 detail 已内置修复建议（如"补 N 页或降档至 short""触底仍溢出（需删字或拆页）"），挂 issue 时直接引用。
 - PPT-04 是引擎侧字体度量估算（PIL 实测字形宽度 + 逐行折行），引擎会自动缩字号（body 下限 14pt、col_title 14pt、table 12pt），sidecar 记录 shrink_from；估算存在误差，用户肉眼复核发现误报/漏报时先核 text_fit.py 的度量参数，不得直接放宽阈值。
 - PPT-14 只查紧邻中文的半角标点与全角数字/拉丁字母，西文缩写、公式、数字小数点在合法白名单内不误报；如报"半角','"多半是中文语境误用英文逗号，改成全角即可。
+- PPT-16 只抽 2 位及以上整数与含小数的数字 token（单位 1 位数字如 "4 项措施"、编号 "FM04" 中的 04 不抽），避免"第4条/一/二"等顺序词误报；查无此数先核输入源路径是否对，再回 S3 把数字改回源数据，不得为了让 QA 过而往输入源里加数。
 - 严重/高未 closed 禁止进 S7；一般/建议可带问题交付但必须在交付说明中披露。

@@ -16,7 +16,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from pptx_engine import DeckBuilder, load_theme, PLACEHOLDER_MARK
 
 LAYOUTS = {"cover", "toc", "section", "content", "two_column",
-           "image_text", "table", "closing"}
+           "image_text", "table", "flow", "closing"}
 
 
 def _bullets(raw):
@@ -97,6 +97,14 @@ def build(deck_path, theme_path, out_pptx, layout_json=None, template=None):
                         kicker=s.get("kicker", ""),
                         highlight_rows=tbl.get("highlight_rows"),
                         col_weights=tbl.get("col_weights"))
+        elif layout == "flow":
+            steps = s.get("steps")
+            if not steps:
+                raise ValueError(f"第 {i} 页 flow 版式缺 steps")
+            d.add_flow(s.get("title", PLACEHOLDER_MARK),
+                       [str(t) for t in steps], notes=notes,
+                       kicker=s.get("kicker", ""),
+                       direction=s.get("direction", "h"))
         elif layout == "closing":
             d.add_closing(title=s.get("title", "恳请各位老师批评指正"),
                           sub=s.get("sub", "谢谢聆听"), notes=notes)

@@ -331,6 +331,85 @@ def main():
               "（约" in speech_md and "分钟）" in speech_md, speech_md[:200])
         check("speech.md 标注附录放映隐藏",
               "【备份页·放映隐藏】" in speech_md, speech_md[:200])
+
+        # --- flow 技术路线图版式：正例 QA 全过 + sidecar 步数 ---
+        d12 = os.path.join(tmp, "flow")
+        os.makedirs(d12)
+        fl = good_slides()
+        fl[3] = {"layout": "flow", "title": "技术路线",
+                 "steps": ["功能结构分析", "故障树建模", "FMEA 排序", "维修策略"],
+                 "notes":
+                    "技术路线分四步：先做功能结构分析厘清系统组成，再建立故障树"
+                    "追溯失效原因链，接着用 FMEA 对故障模式排序，最后据此提出"
+                    "维修策略优化建议，四步环环相扣形成完整分析闭环。"}
+        code, report, _, layout12 = build_and_qa(d12, write_deck(d12, fl))
+        check("flow 正例 QA 全过", code == 0, report)
+        with open(layout12, encoding="utf-8") as f:
+            lj12 = json.load(f)
+        flow_body = [s for p in lj12["pages"] for s in p["shapes"]
+                     if s.get("kind") == "body" and s.get("paras")]
+        check("flow sidecar 记录步数", bool(flow_body), str(flow_body))
+
+        # --- PPT-16 数据溯源：正例数字在源 / 负例查无此数 / 无源跳过 ---
+        d13 = os.path.join(tmp, "p16")
+        os.makedirs(d13)
+        src_file = os.path.join(d13, "源.md")
+        with open(src_file, "w", encoding="utf-8") as f:
+            f.write("# 第一章\n\n实测 RPN 值为 216，可靠度 0.96。\n")
+        good_p16 = good_slides()
+        good_p16[3] = {"layout": "content", "title": "结果",
+                       "bullets": ["RPN 值为 216", "可靠度 0.96"],
+                       "notes": "数据溯源正例"}
+        deck13 = write_deck(d13, good_p16)
+        code, report, pptx13, layout13 = build_and_qa(d13, deck13)
+        check("PPT-16 无源时跳过", "PPT-16: PASS" in report, report)
+        code = ppt_qa.run_qa(pptx13, layout13, THEME, deck13,
+                             os.path.join(d13, "qa"), source_path=src_file)
+        report16 = open(os.path.join(d13, "qa", "ppt-qa-report.md"),
+                        encoding="utf-8").read()
+        check("PPT-16 正例数字在源 PASS", "PPT-16: PASS" in report16, report16)
+        bad_p16 = good_slides()
+        bad_p16[3] = {"layout": "content", "title": "结果",
+                      "bullets": ["RPN 值为 99999"], "notes": "数据溯源负例"}
+        deck13b = write_deck(d13, bad_p16)
+        code, report, pptx13b, layout13b = build_and_qa(d13, deck13b)
+        code = ppt_qa.run_qa(pptx13b, layout13b, THEME, deck13b,
+                             os.path.join(d13, "qa"), source_path=src_file)
+        report16b = open(os.path.join(d13, "qa", "ppt-qa-report.md"),
+                         encoding="utf-8").read()
+        check("PPT-16 负例查无此数 FAIL",
+              "PPT-16: FAIL" in report16b and "99999" in report16b, report16b)
+
+        # --- docx 输入源自动抽图 → materials/figNN ---
+        d14 = os.path.join(tmp, "docx")
+        os.makedirs(d14)
+        from PIL import Image as PILImage
+        from docx import Document
+        from docx.shared import Inches
+        img1 = os.path.join(d14, "f1.png")
+        img2 = os.path.join(d14, "f2.png")
+        PILImage.new("RGB", (320, 240), (30, 144, 255)).save(img1)
+        PILImage.new("RGB", (320, 240), (255, 80, 80)).save(img2)
+        doc = Document()
+        doc.add_heading("第一章 绪论", level=1)
+        doc.add_paragraph("研究背景段落内容，这是超过十二个字的句子。")
+        doc.add_picture(img1, width=Inches(2))
+        doc.add_picture(img2, width=Inches(2))
+        docx_path = os.path.join(d14, "论文.docx")
+        doc.save(docx_path)
+        out14 = os.path.join(d14, "pptproj")
+        argv = sys.argv
+        sys.argv = ["ingest_source.py", "--docx", docx_path, "--out", out14]
+        try:
+            rc = ingest_source.main()
+        finally:
+            sys.argv = argv
+        mat14 = os.path.join(out14, "materials")
+        check("docx 抽图退出码 0", rc == 0)
+        check("docx 抽图 materials/fig01+fig02",
+              os.path.isfile(os.path.join(mat14, "fig01.png")) and
+              os.path.isfile(os.path.join(mat14, "fig02.png")),
+              str(sorted(os.listdir(mat14)) if os.path.isdir(mat14) else []))
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 

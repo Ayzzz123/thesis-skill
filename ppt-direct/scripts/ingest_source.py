@@ -98,6 +98,27 @@ def _read_md(path):
     return chapters, {}
 
 
+def _extract_docx_images(docx_path, materials_dir):
+    """docx 内嵌图片 → materials/figNN.ext（按文档内顺序编号）。
+    只搬运原图，不自动生成图片页（配图放哪由 S3 人工决定）。返回抽出张数。"""
+    from docx import Document
+    doc = Document(docx_path)
+    os.makedirs(materials_dir, exist_ok=True)
+    n = 0
+    for rel in doc.part.rels.values():
+        if not rel.reltype.endswith("/image"):
+            continue
+        try:
+            ext = os.path.splitext(rel.target_part.partname)[1] or ".png"
+        except Exception:
+            ext = ".png"
+        n += 1
+        out = os.path.join(materials_dir, f"fig{n:02d}{ext}")
+        with open(out, "wb") as f:
+            f.write(rel.target_part.blob)
+    return n
+
+
 def _chapter_points(body, cap):
     """从章节正文提取要点：二级标题 + 各段首句，截断 cap 条。"""
     points = [m.strip() for m in re.findall(r"(?m)^##\s+(.+)$", body)]
@@ -259,11 +280,14 @@ def main():
     a = ap.parse_args()
     try:
         structure, qa_items = [], []
+        n_img = 0
         if a.aeromech:
             chapters, meta = _read_chapters_aeromech(a.aeromech)
             structure, qa_items = _read_defense(a.aeromech)
         elif a.docx:
             chapters, meta = _read_docx(a.docx)
+            n_img = _extract_docx_images(
+                a.docx, os.path.join(a.out, "materials"))
         else:
             chapters, meta = _read_md(a.md)
         if not chapters:
@@ -280,6 +304,9 @@ def main():
             yaml.safe_dump(outline, f, allow_unicode=True, sort_keys=False)
         print(f"OK: {len(chapters)} 章 → {len(deck['slides'])} 页草稿 "
               f"（{adir}）")
+        if n_img:
+            print(f"OK: docx 抽出 {n_img} 张图 → "
+                  f"{os.path.join(a.out, 'materials')}")
         return 0
     except Exception as e:
         print(f"FAIL: {type(e).__name__}: {e}")

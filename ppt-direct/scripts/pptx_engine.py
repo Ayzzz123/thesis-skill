@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 """pptx_engine.py — ppt-direct 渲染引擎（python-pptx 直出 .pptx）
 
-版式原语：cover / toc / section / content / two_column / image_text / closing。
+版式原语：cover / toc / section / content / two_column / image_text / table /
+flow（技术路线图）/ closing。
 所有页面统一从空白版式绘制，主题（配色/字体/字号）全部来自 theme.yaml，
 禁止在引擎内硬编码颜色与字体。
 
@@ -53,6 +54,7 @@ TEMPLATE_HINTS = {
     "two_column": ("两栏", "比较", "comparison", "two content"),
     "image_text": ("图片", "picture", "image", "图文"),
     "table": ("表格", "table"),
+    "flow": ("流程", "路线", "flow", "process", "流程图"),
     "closing": ("结束", "结尾", "致谢", "closing", "thank"),
     "content": ("标题和内容", "title and content", "内容", "content", "标题"),
 }
@@ -452,6 +454,115 @@ class DeckBuilder:
             "est_need_h_cm": round(need_h, 2),
             "est_overflow": need_h > t_h + 0.05,
             "shrink_from": shrink_from,
+        })
+        self._footer(slide)
+        if notes:
+            slide.notes_slide.notes_text_frame.text = notes
+        return self
+
+    def add_flow(self, title, steps, notes="", kicker="", direction="h"):
+        """技术路线图：steps: list[str]（≤6 横向 / ≤8 纵向）。
+        direction: 'h' 左右箭头链（默认）| 'v' 上下箭头链。
+        方块统一圆角矩形，自动缩字号（下限 body 14pt），sidecar 记 kind=body。"""
+        slide, rec = self._new_slide("flow")
+        self._rect(slide, 0, 0, self.w_cm, 0.35, fill="primary")
+        if kicker:
+            self._text(slide, rec, 2.0, 0.9, self.w_cm - 4.0, 0.9, [kicker],
+                       size_key="small", color="muted", kind="kicker")
+        self._text(slide, rec, 2.0, 1.35 if not kicker else 1.75,
+                   self.w_cm - 4.0, 1.6, [title], size_key="h1", bold=True,
+                   kind="title")
+
+        n = len(steps)
+        if n == 0:
+            raise ValueError("flow 版式缺 steps")
+        if direction == "h" and n > 6:
+            raise ValueError(f"flow 横向最多 6 步，收到 {n}（拆两页或合并步骤）")
+        if direction == "v" and n > 8:
+            raise ValueError(f"flow 纵向最多 8 步，收到 {n}")
+        texts = [f"{i + 1}  {s}" for i, s in enumerate(steps)]
+
+        # 几何与全局字号拟合（每格宽度 box_w-0.4cm 可用）
+        cjk = self.theme["fonts"]["cjk"]
+        start_pt = self.theme["sizes"]["body"]
+        floor = SHRINK_FLOOR["body"]
+        if direction == "h":
+            avail_w = self.w_cm - 4.4
+            arrow_w = 0.9
+            box_w = (avail_w - arrow_w * (n - 1)) / n
+            box_h = 1.8
+            y0 = 3.9 + (self.h_cm - 5.6 - box_h) / 2
+            arrow_shape, aw, ah = MSO_SHAPE.RIGHT_ARROW, arrow_w, 0.55
+            x0 = 2.2
+        else:
+            box_w = min(9.0, self.w_cm - 6.0)
+            box_h = 1.05
+            total_h = n * box_h + (n - 1) * 0.6
+            y0 = 3.8 + (self.h_cm - 4.6 - total_h) / 2
+            x0 = (self.w_cm - box_w) / 2
+            arrow_shape, aw, ah = MSO_SHAPE.DOWN_ARROW, 0.55, 0.6
+
+        size, worst_overflow = start_pt, False
+        if _FIT is not None:
+            for t in texts:
+                pt, _, _, overflow, _ = _FIT.fit(
+                    [t], cjk, start_pt, box_w - 0.4, box_h,
+                    floor_pt=floor, line_spacing=1.15)
+                size = min(size, pt)
+                worst_overflow = worst_overflow or overflow
+        else:
+            for t in texts:
+                worst_overflow = worst_overflow or (
+                    len(t) * size * 0.6 * CM_PER_PT * 1.15 > box_h)
+        shrink_from = start_pt if size < start_pt else None
+
+        yy = y0
+        for i, t in enumerate(texts):
+            if direction == "h":
+                x = x0 + i * (box_w + arrow_w)
+                if i < n - 1:
+                    ar = slide.shapes.add_shape(
+                        arrow_shape, Cm(x + box_w), Cm(y0 + box_h / 2 - ah / 2),
+                        Cm(aw), Cm(ah))
+                    ar.shadow.inherit = False
+                    ar.fill.solid()
+                    ar.fill.fore_color.rgb = _rgb(self.theme["colors"]["primary"])
+                    ar.line.fill.background()
+            else:
+                x = x0
+                if i < n - 1:
+                    ar = slide.shapes.add_shape(
+                        arrow_shape, Cm(x0 + box_w / 2 - aw / 2),
+                        Cm(yy + box_h), Cm(aw), Cm(ah))
+                    ar.shadow.inherit = False
+                    ar.fill.solid()
+                    ar.fill.fore_color.rgb = _rgb(self.theme["colors"]["primary"])
+                    ar.line.fill.background()
+            box = slide.shapes.add_shape(
+                MSO_SHAPE.ROUNDED_RECTANGLE, Cm(x), Cm(yy), Cm(box_w), Cm(box_h))
+            box.shadow.inherit = False
+            box.fill.solid()
+            box.fill.fore_color.rgb = _rgb(self.theme["colors"]["light"])
+            box.line.color.rgb = _rgb(self.theme["colors"]["primary"])
+            box.line.width = Pt(0.75)
+            tf = box.text_frame
+            tf.word_wrap = True
+            tf.vertical_anchor = MSO_ANCHOR.MIDDLE
+            tf.margin_left = Cm(0.1)
+            tf.margin_right = Cm(0.1)
+            p = tf.paragraphs[0]
+            p.alignment = PP_ALIGN.CENTER
+            run = p.add_run()
+            run.text = t
+            _set_run_font(run, self.theme, size, color="text")
+            if direction == "v":
+                yy += box_h + ah
+
+        rec["shapes"].append({
+            "kind": "body", "box_cm": [round(x0, 2), round(y0, 2),
+                                       round(box_w, 2), round(box_h, 2)],
+            "font_pt": size, "paras": n, "chars": sum(len(t) for t in texts),
+            "est_overflow": worst_overflow, "shrink_from": shrink_from,
         })
         self._footer(slide)
         if notes:

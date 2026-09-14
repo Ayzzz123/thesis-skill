@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""ppt_qa.py — 答辩 PPT 全片 QA（PPT-01~15）
+"""ppt_qa.py — 答辩 PPT 全片 QA（PPT-01~16）
 
 检查真源：layout JSON sidecar（引擎绘制时输出的几何/文字量元数据）+
 pptx slide XML（配色/字体/占位符/放映隐藏实测）。原则与 aeromech-thesis 一致：
@@ -13,9 +13,10 @@ PPT-05 配色合规         PPT-12 表格规模（行≤12、列≤8）
 PPT-06 同版式对齐一致   PPT-13 校模母版使用率（≥50%）
 PPT-07 字体合规         PPT-14 标点/全半角一致性
                         PPT-15 附录页隐藏放映
+                        PPT-16 数据溯源（slide 数字 ∈ 输入源）
 
 用法: python ppt_qa.py --pptx 答辩PPT.pptx --layout layout.json
-        --theme theme.yaml [--deck deck.yaml] --out <报告目录>
+        --theme theme.yaml [--deck deck.yaml] [--source 输入源] --out <报告目录>
 退出码: 0=全部 PASS；1=存在 FAIL
 """
 import argparse
@@ -56,7 +57,7 @@ class Report:
         os.makedirs(self.out_dir, exist_ok=True)
         path = os.path.join(self.out_dir, "ppt-qa-report.md")
         fails = [c for c, ok, _ in self.items if not ok]
-        lines = ["# PPT QA 报告（PPT-01~15）", ""]
+        lines = ["# PPT QA 报告（PPT-01~16）", ""]
         for code, ok, detail in self.items:
             lines.append(f"- {code}: {'PASS' if ok else 'FAIL'} | {detail}")
         lines += ["", f"结果: {'ALL PASS' if not fails else 'FAIL: ' + ', '.join(fails)}"]
@@ -127,7 +128,86 @@ def _punct_issues(page_texts, notes):
     return issues
 
 
-def run_qa(pptx_path, layout_path, theme_path, deck_path, out_dir):
+# PPT-16 数据溯源：只查可见正文的数字 token（≥2 位或带小数；
+# 单位/序号/SOD 单项评分等一位数不查，避免误报）
+_NUM_TOKEN = re.compile(r"\d+\.\d+|\d{2,}")
+
+
+def _deck_numbers(deck):
+    """从 deck.yaml 可见正文抽 (页号, 数字token)；不查标题/眉标/页码/备注。"""
+    out = []
+    for i, s in enumerate(deck.get("slides", []), 1):
+        lay = s.get("layout", "")
+        texts = []
+        if lay in ("content", "image_text", "toc"):
+            for b in s.get("bullets", []):
+                texts.append(b[1] if isinstance(b, (list, tuple)) else b)
+        elif lay == "two_column":
+            for col in (s.get("left", {}), s.get("right", {})):
+                texts += [b for b in col.get("bullets", [])]
+        elif lay == "table":
+            tbl = s.get("table", {})
+            texts += [str(h) for h in tbl.get("headers", [])]
+            for r in tbl.get("rows", []):
+                texts += [str(c) for c in r]
+        elif lay == "flow":
+            texts += [str(t) for t in s.get("steps", [])]
+        texts.append(s.get("caption", ""))
+        for t in texts:
+            if not isinstance(t, str):
+                continue
+            for m in _NUM_TOKEN.findall(t):
+                out.append((i, m))
+    return out
+
+
+def _source_text(path):
+    """输入源全文：目录（.aeromech chapters 优先，其次全目录 md）/ 单个 md / docx。
+    不可读返回 None。"""
+    if not path or not os.path.exists(path):
+        return None
+    texts = []
+    if os.path.isdir(path):
+        roots = []
+        ch = os.path.join(path, ".aeromech", "artifacts", "chapters")
+        if os.path.isdir(ch):
+            roots.append(ch)
+        roots.append(path)
+        seen = set()
+        for r in roots:
+            for dirpath, _, files in os.walk(r):
+                for fn in sorted(files):
+                    if not fn.endswith(".md"):
+                        continue
+                    fp = os.path.join(dirpath, fn)
+                    if fp in seen:
+                        continue
+                    seen.add(fp)
+                    try:
+                        with open(fp, encoding="utf-8") as f:
+                            texts.append(f.read())
+                    except OSError:
+                        pass
+    elif path.endswith(".md"):
+        with open(path, encoding="utf-8") as f:
+            texts.append(f.read())
+    elif path.endswith(".docx"):
+        try:
+            from docx import Document
+            doc = Document(path)
+            texts += [p.text for p in doc.paragraphs]
+            for t in doc.tables:
+                for row in t.rows:
+                    texts += [c.text for c in row.cells]
+        except Exception:
+            return None
+    else:
+        return None
+    return "\n".join(texts) if texts else None
+
+
+def run_qa(pptx_path, layout_path, theme_path, deck_path, out_dir,
+           source_path=None):
     rep = Report(out_dir)
     with open(theme_path, encoding="utf-8") as f:
         theme = yaml.safe_load(f)
@@ -170,7 +250,7 @@ def run_qa(pptx_path, layout_path, theme_path, deck_path, out_dir):
         rep.add("PPT-01", True, f"未声明档位（{tier_name}），跳过区间校验")
 
     # PPT-02/03/04/06/09 逐页几何与文字量
-    body_layouts = {"content", "two_column", "image_text", "toc"}
+    body_layouts = {"content", "two_column", "image_text", "toc", "flow"}
     worst = []
     bullet_over, char_over, empty_pages = [], [], []
     title_pos = {}
@@ -316,6 +396,22 @@ def run_qa(pptx_path, layout_path, theme_path, deck_path, out_dir):
             f"附录页未隐藏: {appendix_hidden_missing or '无'}；"
             f"正片被误隐藏: {body_hidden or '无'}")
 
+    # PPT-16 数据溯源：slide 上可见数字 token 必须能在输入源找到（高）
+    src = _source_text(source_path)
+    if src is None:
+        rep.add("PPT-16", True, "未提供 --source，跳过数据溯源校验")
+    else:
+        missing = []
+        seen = set()
+        for pg, tok in _deck_numbers(deck):
+            if tok in src or (pg, tok) in seen:
+                continue
+            seen.add((pg, tok))
+            missing.append(f"P{pg} {tok}")
+        detail = ("、".join(missing[:8])
+                  + (f"…等 {len(missing)} 处" if len(missing) > 8 else "")) or "无"
+        rep.add("PPT-16", not missing, f"输入源查无此数: {detail}")
+
     rep.save()
     return 0 if all(ok for _, ok, _ in rep.items) else 1
 
@@ -326,10 +422,12 @@ def main():
     ap.add_argument("--layout", required=True)
     ap.add_argument("--theme", required=True)
     ap.add_argument("--deck", default=None)
+    ap.add_argument("--source", default=None,
+                    help="输入源（目录/md/docx），PPT-16 数据溯源用")
     ap.add_argument("--out", required=True)
     a = ap.parse_args()
     try:
-        return run_qa(a.pptx, a.layout, a.theme, a.deck, a.out)
+        return run_qa(a.pptx, a.layout, a.theme, a.deck, a.out, a.source)
     except Exception as e:
         _safe_print(f"FAIL: {type(e).__name__}: {e}")
         return 1

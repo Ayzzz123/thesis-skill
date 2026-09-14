@@ -1,11 +1,11 @@
 ---
 name: ppt-direct
-description: 毕业答辩 PPT 直出 Skill（可回退状态机 S1–S7：需求分析→大纲规划→逐页内容→主题版式→渲染构建→全片QA→交付，python-pptx 直出可编辑 .pptx，内置学术蓝默认主题并支持导入学校模板（提取配色字体+母版版式驱动），渲染级字体度量自动缩字号防溢出，QA 覆盖页数档位/要点数/字数/溢出/配色/对齐/字体/占位符/空页/备注/讲稿时长/表格规模/母版使用率/标点全半角/附录页隐藏放映十五项检查并附修复建议，S5 同步导出逐字讲稿 speech.md 供排练）。当用户要求"做答辩PPT""毕业答辩幻灯片""把论文做成PPT""直出pptx""帮我生成答辩演示文稿"时使用。输入源支持三种：aeromech-thesis 论文项目（.aeromech，自动提炼章节内容，联动 S10 答辩产物 ppt-structure.md 板块顺序与 qa-bank.md 问答备份页）、独立论文文件（docx/md）、纯口述信息。内置 .pptdirect/state.yaml 项目状态机，支持跨会话"继续做PPT"恢复。边界：本 Skill 只做答辩演示文稿的生成与质量检查；论文研究与写作本身属 aeromech-thesis；查重降重、对抗式答辩演练、学校模板 docx 终检属 aviation-engineering-thesis，命中即转交不代做。默认中文，默认协作模式。
+description: 毕业答辩 PPT 直出 Skill（可回退状态机 S1–S7：需求分析→大纲规划→逐页内容→主题版式→渲染构建→全片QA→交付，python-pptx 直出可编辑 .pptx，内置学术蓝默认主题并支持导入学校模板（提取配色字体+母版版式驱动），渲染级字体度量自动缩字号防溢出，版式原语覆盖表格与技术路线图 flow，QA 覆盖页数档位/要点数/字数/溢出/配色/对齐/字体/占位符/空页/备注/讲稿时长/表格规模/母版使用率/标点全半角/附录页隐藏放映/数据溯源十六项检查并附修复建议，S5 同步导出逐字讲稿 speech.md 供排练）。当用户要求"做答辩PPT""毕业答辩幻灯片""把论文做成PPT""直出pptx""帮我生成答辩演示文稿"时使用。输入源支持三种：aeromech-thesis 论文项目（.aeromech，自动提炼章节内容，联动 S10 答辩产物 ppt-structure.md 板块顺序与 qa-bank.md 问答备份页）、独立论文文件（docx/md，docx 内嵌图片自动抽到 materials/）、纯口述信息。内置 .pptdirect/state.yaml 项目状态机，支持跨会话"继续做PPT"恢复。边界：本 Skill 只做答辩演示文稿的生成与质量检查；论文研究与写作本身属 aeromech-thesis；查重降重、对抗式答辩演练、学校模板 docx 终检属 aviation-engineering-thesis，命中即转交不代做。默认中文，默认协作模式。
 ---
 
 # PPT Direct（PPD）
 
-> 版本：v1.2.0（附录备份页隐藏放映 · 逐字讲稿导出 · 标点/全半角一致性检查 · 表格版式原语 · 渲染级溢出检测与自动缩字号 · 校模母版驱动模式 · 讲稿时长估算 · aeromech S10 答辩产物联动）
+> 版本：v1.3.0（技术路线图 flow 版式 · 数据溯源校验 PPT-16 · docx 输入源自动抽图 · 附录备份页隐藏放映 · 逐字讲稿导出 · 标点/全半角一致性检查 · 表格版式原语 · 渲染级溢出检测与自动缩字号 · 校模母版驱动模式 · 讲稿时长估算 · aeromech S10 答辩产物联动）
 
 毕业答辩 PPT 直出助手：从论文（aeromech 项目或独立文件）到一份 QA 全过、可直接用 PowerPoint/WPS 打开编辑的 `.pptx`。
 
@@ -78,11 +78,11 @@ ppt-project/
 | 脚本 | 用途 | 退出码 |
 |---|---|---|
 | `scripts/state_util.py` | init / status / transition，状态机全部读写 | 0/1 |
-| `scripts/ingest_source.py` | 输入源解析：--aeromech / --docx / --md → outline.yaml + deck.yaml 草稿；--aeromech 自动联动 `.aeromech/artifacts/defense/` 的 ppt-structure.md（板块顺序）与 qa-bank.md（问答备份页） | 0/1 |
+| `scripts/ingest_source.py` | 输入源解析：--aeromech / --docx / --md → outline.yaml + deck.yaml 草稿；--aeromech 自动联动 `.aeromech/artifacts/defense/` 的 ppt-structure.md（板块顺序）与 qa-bank.md（问答备份页）；--docx 自动把内嵌图片抽到 materials/figNN.ext | 0/1 |
 | `scripts/theme_extract.py` | 校模 .pptx → theme.yaml（配色/字体/画幅/版式清单 template_layouts） | 0/1 |
-| `scripts/build_pptx.py` | deck.yaml + theme.yaml → .pptx + layout.json；`--template 校模.pptx` 开启母版驱动模式；appendix 页自动设放映隐藏 | 0/1/2 |
+| `scripts/build_pptx.py` | deck.yaml + theme.yaml → .pptx + layout.json；`--template 校模.pptx` 开启母版驱动模式；appendix 页自动设放映隐藏；版式原语含 flow 技术路线图（横/纵两种流向） | 0/1/2 |
 | `scripts/speech_export.py` | deck.yaml → 逐字讲稿 speech.md（页号/标题/预估时长，附录页标注放映隐藏），排练照读 | 0/1 |
-| `scripts/ppt_qa.py` | PPT-01~15 全片 QA → ppt-qa-report.md（含修复建议） | 0=全过 / 1=有 FAIL |
+| `scripts/ppt_qa.py` | PPT-01~16 全片 QA → ppt-qa-report.md（含修复建议）；`--source 输入源` 开启 PPT-16 数据溯源 | 0=全过 / 1=有 FAIL |
 
 依赖：`python-pptx`、`PyYAML`、`Pillow`（读 docx 输入源时另需 `python-docx`），见 `requirements.txt`。
 

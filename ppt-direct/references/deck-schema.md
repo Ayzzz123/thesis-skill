@@ -48,6 +48,12 @@ slides:
       highlight_rows: [0]                  # 可选：高亮数据行（0 起）
       col_weights: [3, 1]                  # 可选：列宽权重，默认均分
     notes: "…"
+  - layout: flow               # v1.3.0 技术路线图
+    title: "技术路线"
+    kicker: "可选眉标"
+    direction: h                # h=横排（steps ≤6）| v=纵排（7~8 条）
+    steps: ["功能结构分析", "故障树建模", "FMEA 排序", "维修策略"]  # 每条 ≤12 字
+    notes: "…"
   - layout: closing
     title: "恳请各位老师批评指正"
     sub: "谢谢聆听"
@@ -62,7 +68,7 @@ slides:
 
 规则：
 
-1. `layout` 必填且只能是八种之一（cover/toc/section/content/two_column/image_text/table/closing）；未知值构建时报错（退出码 1）。
+1. `layout` 必填且只能是九种之一（cover/toc/section/content/two_column/image_text/table/flow/closing）；未知值构建时报错（退出码 1）。flow 页 `steps` 必填，横排 ≤6 条、纵排 ≤8 条，超限构建时报错。
 2. 可见文字遵守 `theme.yaml` 的 limits：`bullets_per_slide`（默认 7）、`chars_per_slide`（默认 150，不含 notes）。附录页（appendix: true）豁免这两项与 PPT-06 对齐检查。
 3. **诚信**：bullets 只能写论文/输入源里有的内容；数据须与论文一致；无处安放的信息写【待填】，挂 open_issue（category=content），由用户补全，禁止编造。
 4. `notes` 是本页讲稿口径（30~90 字/页为宜），会写入 pptx 备注页；含模拟数据的页面必须在 notes 里声明"方法演示，非真实结果"。

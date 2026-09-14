@@ -11,7 +11,7 @@
 
 1. **输入源**（三选一）：
    - `aeromech`：用户工程目录下有 `.aeromech/` → `ingest_source.py --aeromech`（自动联动 S10 答辩产物：读 `.aeromech/artifacts/defense/ppt-structure.md` 定板块顺序、`qa-bank.md` 生成问答备份附录页）
-   - `docx/md`：独立论文文件 → `ingest_source.py --docx/--md`
+   - `docx/md`：独立论文文件 → `ingest_source.py --docx/--md`；docx 内嵌图片自动抽到 `materials/figNN.ext`（按文档内顺序编号，供 S3 图页引用，不自动生成图片页）
    - `manual`：无论文成稿，纯口述 → 直接进 S2 手工大纲
 2. **页数档位**：由答辩时长定（5 分钟→short、8 分钟→standard、10 分钟→long）；用户不定则按 standard 并标【假设】。
 3. **时长约束**：用户给出总时长时写入 `deck.meta.duration_min`（分钟数），S6 的 PPT-11 按 250 字/分钟校验 notes 总量；用户没给则不写，QA 回退到档位默认时长。
