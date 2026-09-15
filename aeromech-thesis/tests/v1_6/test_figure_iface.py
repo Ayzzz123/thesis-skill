@@ -203,6 +203,19 @@ def main():
           lst["has_plan"] and lst["figures"]["FIG-001"]["status"] == "VERIFIED"
           and lst["figures"]["FIG-BAD"]["status"] == "REJECTED")
 
+    # ---------- FIGIF-09（test-8.0 回归）：TABLE-* 条目不参与图像生命周期 ----------
+    root5 = make_root(tmp, "tablefilter")
+    RI.save_registry(root5, "figures", [
+        {"id": "FIG-001", "name": "图1-1 示意", "related_rqs": ["RQ-01"]},
+        {"id": "TABLE-001", "name": "表1-1 割集表", "related_analyses": ["AN-001"]}])
+    sp5 = FI.plan_figures(root5, provider="local")
+    check("FIGIF-09 local plan 仅含 FIG-*，TABLE-* 不入计划",
+          [s["figure_id"] for s in sp5] == ["FIG-001"], str(sp5))
+    lst5 = FI.lifecycle_state(root5)
+    check("FIGIF-09 TABLE-* 不被记 NEEDS_HUMAN_REVIEW（不污染 G-FIG-01）",
+          "TABLE-001" not in lst5["figures"]
+          and lst5["figures"]["FIG-001"]["status"] in ("PLANNED", "NEEDS_HUMAN_REVIEW"))
+
     shutil.rmtree(tmp, ignore_errors=True)
     print(f"test_figure_iface 结果: PASS={PASS} FAIL={FAIL}")
     return 1 if FAIL else 0

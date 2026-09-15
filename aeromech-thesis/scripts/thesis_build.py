@@ -16,7 +16,8 @@ Build Contract：`<root>/.aeromech/build-contract.yaml`
   research: {required: true|false}                  # 研究上下文（注册表）在场性由引擎判定，不伪造
   school_format: {template: rel|null, format_file}  # 缺 template→FORMAT_RECONSTRUCTION
   figures: [{figure_id, display, file, caption_cn, caption_en}]   # 或 figure_context 引用
-  tables: {captions: {...}}  | qa: {out: rel}      | output: {docx, pdf}
+  tables: [{display, caption_en}]（表体由章节 md 渲染，本域只提供英文题注）
+  qa: {out: rel}  | output: {docx, pdf}
 缺失语义（指令 §七）：必需内容缺 → ERROR（列出缺项）；可选域缺 → NOT_APPLICABLE（如实记录），
 不得静默补假数据。
 
@@ -202,18 +203,31 @@ def _chapter_md(root, rel):
 
 
 def _fig_maps(contract, root):
-    """cap_map: 编号（parse_md 的 "1-1" 语义，display 去图/表前缀）→ (文件名, 中文题注)。"""
-    cap_map, en_map = {}, {}
+    """cap_map: 编号（parse_md 的 "1-1" 语义，display 去图/表前缀）→ (文件名, 中文题注)。
+    英文题注按 display 原前缀分流：图→fig_en_map（FigureBlock 双语题注），表→en_map
+    （表上方 Tab. 段）。编号在图/表各自序列里可同名（图3-1/表3-1），不得互相覆盖。
+    表域（v1.6 test-8.0 接通）：contract.tables 条目只提供英文题注（表体由章节 md
+    的表题行+管道行经 parse_md 渲染），无 file 要求。"""
+    cap_map, en_map, fig_en_map = {}, {}, {}
     figdir = None
     for fg in contract.get("figures") or []:
-        disp = re.sub(r"^[图表]\s*", "", str(fg.get("display", "")))
+        disp_raw = str(fg.get("display", ""))
+        disp = re.sub(r"^[图表]\s*", "", disp_raw)
         fname = os.path.basename(fg.get("file", ""))
         if disp and fname:
             cap_map[disp] = (fname, fg.get("caption_cn", ""))
-            if fg.get("caption_en"):
-                en_map[disp] = fg["caption_en"]
             figdir = os.path.dirname(os.path.join(root, fg["file"]))
-    return cap_map, en_map, figdir
+        if disp and fg.get("caption_en"):
+            (en_map if disp_raw.strip().startswith("表") else fig_en_map)[disp] = \
+                fg["caption_en"]
+    tb = contract.get("tables")
+    entries = tb if isinstance(tb, list) else (tb or {}).get("captions") if isinstance(tb, dict) else None
+    if isinstance(entries, list):
+        for tg in entries:
+            disp = re.sub(r"^[图表]\s*", "", str(tg.get("display", "")))
+            if disp and tg.get("caption_en"):
+                en_map[disp] = tg["caption_en"]
+    return cap_map, en_map, figdir, fig_en_map
 
 
 def build_docx(root, contract=None):
@@ -227,7 +241,7 @@ def build_docx(root, contract=None):
     out = out_rel if os.path.isabs(out_rel) else os.path.join(root, out_rel)
     content = c["content"]
     proj = c["project"]
-    cap_map, en_map, figdir = _fig_maps(c, root)
+    cap_map, en_map, figdir, fig_en_map = _fig_maps(c, root)
 
     if mode == TF.MODE_TEMPLATE_FIDELITY:
         doc = TF.open_master(v["template"], out)
@@ -246,14 +260,15 @@ def build_docx(root, contract=None):
             if pg is not None:
                 sp.remove(pg)
         TF.fill_cover_fields(doc, {"题    目": proj["title"], "专    业": proj.get("major", "")})
-        _append_content(root, doc, c, v, cap_map, en_map, figdir, roman_front=True)
+        _append_content(root, doc, c, v, cap_map, en_map, figdir, roman_front=True,
+                        fig_en_map=fig_en_map)
     else:
         from docx import Document
         doc = Document()
         sec = doc.sections[0]
         E.setup_section(sec)
         _append_content(root, doc, c, v, cap_map, en_map, figdir, roman_front=False,
-                        fresh_cover=True)
+                        fresh_cover=True, fig_en_map=fig_en_map)
         E.add_page_number_once(doc)
     doc.save(out)
     _mark_embedded(root, c, cap_map, figdir)
@@ -312,7 +327,8 @@ def _content_text(root, content, key):
     return content.get(key)
 
 
-def _append_content(root, doc, c, v, cap_map, en_map, figdir, roman_front, fresh_cover=False):
+def _append_content(root, doc, c, v, cap_map, en_map, figdir, roman_front,
+                    fresh_cover=False, fig_en_map=None):
     content = c["content"]
     proj = c["project"]
     if fresh_cover:
@@ -361,7 +377,8 @@ def _append_content(root, doc, c, v, cap_map, en_map, figdir, roman_front, fresh
         TF.set_pgnum(doc.sections[-1], fmt="decimal", start=1)
     for f in content.get("chapters") or []:
         TF.parse_md(doc, _chapter_md(root, f), fig_dir=figdir,
-                    cap_map=cap_map or None, en_map=en_map or None)
+                    cap_map=cap_map or None, en_map=en_map or None,
+                    fig_en_map=fig_en_map or None)
     # 参考文献（md 列表→段；无则跳过+披露）
     rf = content.get("references_file")
     if rf and os.path.isfile(os.path.join(root, ".aeromech", rf)):

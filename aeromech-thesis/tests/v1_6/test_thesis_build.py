@@ -195,6 +195,52 @@ def main():
           pres2["status"] == "PASS" and pres2["manifest_path"]
           and pres2["artifacts"][0]["artifact"] == "docx")
 
+    # ---------- BUILD-03d 表体渲染不依赖英文题注（test-8.0 根因修复回归） ----------
+    troot = F.make_project(os.path.join(tmp, "tblfix"), with_template=False)
+    contract(troot, chapters=("artifacts/chapters/tbl.md",))
+    w(troot, "artifacts/chapters/tbl.md",
+      "# 第1章 表测试\n\n表1-1 割集表\n\n| 割集 | 阶 |\n|---|---|\n| MC-1 | 1 |\n| MC-4 | 2 |\n\n"
+      "正文一句。\n")
+    tb_out, _ = TB.build_docx(troot)
+    from docx import Document as _Doc
+    td = _Doc(tb_out)
+    data_tbls = [t for t in td.tables if any("MC-1" in c.text for row in t.rows for c in row.cells)]
+    check("BUILD-03d 无英文题注时表体仍渲染（旧实现静默丢行=内容丢失）",
+          bool(data_tbls) and any("MC-4" in c.text for r in data_tbls[0].rows for c in r.cells),
+          f"数据表 {len(data_tbls)} 张")
+    # 契约 tables 提供英文题注 → 表上方出现 Tab. 段（双语题注 QA 依赖）
+    c3d = yaml.safe_load(open(TB.contract_path(troot), encoding="utf-8"))
+    c3d["tables"] = [{"display": "表1-1", "caption_en": "Tab.1-1 Cut sets"}]
+    w(troot, "build-contract.yaml", yaml.safe_dump(c3d, allow_unicode=True))
+    v3d = TB.validate_contract(troot)
+    check("BUILD-03d tables 契约条目不要求 file（validate 不误报 ERROR）",
+          v3d["status"] == "PASS", str(v3d["errors"]))
+    tb_out2, _ = TB.build_docx(troot)
+    td2 = _Doc(tb_out2)
+    check("BUILD-03d tables.caption_en 渲染于表上方（英文题注在中文题之后）",
+          any(p.text.strip() == "Tab.1-1 Cut sets" for p in td2.paragraphs))
+    # 双语图题：contract figures 条目的 caption_en 进 FigureBlock 中文题下方
+    fdir = os.path.join(troot, ".aeromech", "artifacts", "figures")
+    os.makedirs(fdir, exist_ok=True)
+    import docx_engine as E
+    dummy_png = os.path.join(fdir, "fig1-1.png")
+    from PIL import Image as _Img
+    _Img.new("RGB", (800, 400), "white").save(dummy_png)
+    c3e = yaml.safe_load(open(TB.contract_path(troot), encoding="utf-8"))
+    c3e["figures"] = [{"figure_id": "FIG-001", "display": "图1-1",
+                       "file": ".aeromech/artifacts/figures/fig1-1.png",
+                       "caption_cn": "图1-1 示意", "caption_en": "Fig.1-1 demo"}]
+    c3e["content"]["chapters"] = ["artifacts/chapters/fig.md"]
+    w(troot, "artifacts/chapters/fig.md",
+      "# 第1章 图测试\n\n（图1-1 示意）\n\n正文一句。\n")
+    w(troot, "build-contract.yaml", yaml.safe_dump(c3e, allow_unicode=True))
+    tf_out, _ = TB.build_docx(troot)
+    tdf = _Doc(tf_out)
+    celltext = "\n".join(c.text for t in tdf.tables for r in t.rows for c in r.cells)
+    check("BUILD-03d 图块双语题注（FIG-07/09：图内中文题+Fig. 英文题）",
+          "图1-1 示意" in celltext and "Fig.1-1 demo" in celltext,
+          celltext[:60].replace("\n", " / "))
+
     shutil.rmtree(tmp, ignore_errors=True)
     print(f"test_thesis_build 结果: PASS={PASS} FAIL={FAIL}")
     return 1 if FAIL else 0

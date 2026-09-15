@@ -175,6 +175,8 @@ REJECTED / NEEDS_HUMAN_REVIEW                                （失败分支）
   script→受控执行（同 v1.5 recompute 信任边界：仅 `sys.executable` + 项目根内相对 .py，无 shell、
   180s 超时）；validate→graph_quality_qa.check_graphs 单图几何（无 figkit layout 证据→NHR，
   由 PDF 级 QA 在 VERIFIED 兜底）。
+- 生命周期只管图像产物（FIG-*）；figures.yaml 中的 TABLE-* 表条目不参与（无图像可生成，
+  不记 NHR 以免污染 G-FIG-01 域）。
 - 计划机读件 `.aeromech/figures/figure-plan.yaml`；`status` 子命令供 Gate 消费。
   退出码 0=正常 / 1=REJECTED 或 NHR / 2=无计划 / 3=ERROR。
 
@@ -191,8 +193,10 @@ content: {abstract_zh|abstract_zh_file, keywords, abstract_en|abstract_en_file, 
           ack_text|ack_file}                     # chapters 必填非空；文件缺失/空=ERROR
 research: {required: false}                      # 注册表在场性由引擎判定（缺席=N/A 不伪造）
 school_format: {template}                        # 缺→FORMAT_RECONSTRUCTION+N/A 披露
-figures: [{figure_id, display, file, caption_cn, caption_en}]   # display 键自动归一（图1-1→1-1）
-tables: （预留；当前表题注由章节 md 经 parse_md 渲染，构建路径不消费本字段）
+figures: [{figure_id, display, file, caption_cn, caption_en}]   # display 归一；图英文题注进图块（双语）
+tables: [{display, caption_en}] | {captions: [...]}  # 表体由章节 md 的"表题行+管道行"经
+                                                 # parse_md 渲染（v1.6 接通：本字段只提供
+                                                 # 英文题注，图 QA 双语题注需要它）
 output: {docx: 毕业论文.docx, pdf: 毕业论文.pdf}    # qa: {out: artifacts/qa}
 ```
 

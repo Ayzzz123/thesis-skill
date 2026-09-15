@@ -311,8 +311,9 @@ def calc_image_width_cm(png, img_type="default", landscape=False):
 
 
 def figure_block(doc, png_path, fig_caption, img_type="default",
-                 anchor_el=None, landscape=False):
+                 anchor_el=None, landscape=False, fig_caption_en=None):
     """FigureBlock：无边框单列表格 1 行，行 cantSplit → 图片+图题整体不可跨页。
+    fig_caption_en（v1.6 test-8.0：统一构建双语图题）：非空时在中文题下追加英文题段。
     返回表格 XML 元素（可用 anchor.addnext 插入到指定段落后）。"""
     w_cm = calc_image_width_cm(png_path, img_type, landscape)
     guard_table_gap(doc)
@@ -339,6 +340,12 @@ def figure_block(doc, png_path, fig_caption, img_type="default",
     p_cap.paragraph_format.space_after = Pt(6)
     cr = p_cap.add_run(fig_caption)
     set_font(cr, "宋体", 10.5)
+    if fig_caption_en:
+        p_cap2 = cell.add_paragraph()
+        p_cap2.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p_cap2.paragraph_format.line_spacing = 1.3
+        cr2 = p_cap2.add_run(fig_caption_en)
+        set_font(cr2, "宋体", 10.5)
 
     tbl_el = tb._tbl
     if anchor_el is not None:

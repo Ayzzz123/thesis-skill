@@ -200,7 +200,9 @@ class LocalProvider(FigureProvider):
     name = "local"
 
     def plan(self, root, specs=None):
-        """无显式 specs → 从 v1.4 figures.yaml 注册表 + 磁盘 mmd/script 推导计划。"""
+        """无显式 specs → 从 v1.4 figures.yaml 注册表 + 磁盘 mmd/script 推导计划。
+        仅图（FIG-*）进入图像生命周期；TABLE-* 表条目无图像产物，不记 lifecycle
+        （v1.6 test-8.0 修复：表条目以 NEEDS_HUMAN_REVIEW 污染 G-FIG-01 域）。"""
         out = []
         try:
             reg = RI.load_registry(root, "figures") or []
@@ -209,6 +211,8 @@ class LocalProvider(FigureProvider):
         fdir = os.path.join(root, ".aeromech", "artifacts", "figures")
         for it in reg:
             fid = str(it.get("id"))
+            if not fid.startswith("FIG-"):
+                continue
             mmd = os.path.join(fdir, fid + ".mmd")
             script = os.path.join(fdir, fid + ".py")
             png = os.path.join(fdir, "final", os.path.basename(str(it.get("name", ""))[:20]) + ".png")

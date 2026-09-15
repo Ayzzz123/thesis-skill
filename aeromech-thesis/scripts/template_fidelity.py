@@ -360,9 +360,10 @@ def caption_paras(doc, cn_text, en_text, cn_ea="黑体", en_ea="黑体", sz=10.5
     p = doc.add_paragraph()
     ppr(p, line=360, rule="auto", jc="center", keep_next=True)
     add_para_runs(p, cn_text, ea=cn_ea, sz=sz)
-    p2 = doc.add_paragraph()
-    ppr(p2, line=360, rule="auto", jc="center")
-    add_para_runs(p2, en_text, ea=en_ea, sz=sz)
+    if en_text:  # 无英文题注时不留空段（v1.6：表仅中文题注场景）
+        p2 = doc.add_paragraph()
+        ppr(p2, line=360, rule="auto", jc="center")
+        add_para_runs(p2, en_text, ea=en_ea, sz=sz)
     return p
 
 
@@ -388,9 +389,11 @@ def add_md_table(doc, rows, cap_cn=None, cap_en=None, font=10.5, usable=None):
     return doc.tables[-1]
 
 
-def parse_md(doc, md, fig_dir=None, cap_map=None, en_map=None, in_body=True):
+def parse_md(doc, md, fig_dir=None, cap_map=None, en_map=None, in_body=True,
+             fig_en_map=None):
     """md 章节解析：标题/#；图占位（（图x-y …））；表题+表行（跨空行采集，题注不因空行丢失）；
-    正文段落（[n] 上标引用；本章待核实清单→楷体注）。"""
+    正文段落（[n] 上标引用；本章待核实清单→楷体注）。
+    en_map=表英文题注（表上方 Tab. 段）；fig_en_map=图英文题注（FigureBlock 中文题下方）。"""
     lines = md.split("\n")
     i = 0
     while i < len(lines):
@@ -418,7 +421,8 @@ def parse_md(doc, md, fig_dir=None, cap_map=None, en_map=None, in_body=True):
             path = os.path.join(fig_dir, fname) if (fig_dir and fname) else None
             if path and os.path.exists(path):
                 E.figure_block(doc, path,
-                               cap_map[key][1] if isinstance(cap_map[key], tuple) else cap_map[key])
+                               cap_map[key][1] if isinstance(cap_map[key], tuple) else cap_map[key],
+                               fig_caption_en=(fig_en_map or {}).get(key))
             else:
                 add_body(doc, s)  # 无图文件时保留占位行（诚实降级）
             i += 1
@@ -427,7 +431,9 @@ def parse_md(doc, md, fig_dir=None, cap_map=None, en_map=None, in_body=True):
             i += 1
             continue
         m = re.match(r"^(表(\d+-\d+|A-\d+|B-\d+))[ \u3000]*", s)
-        if m and en_map and m.group(2) in en_map:
+        if m:
+            # v1.6 test-8.0 修复：表题行后无条件采集表行渲染（旧实现要求 en_map 含该
+            # 表号才渲染，英文题注缺失时表体被静默丢弃=内容丢失；en_map 现只补充英文题注）
             j = i + 1
             tbl = []
             while j < len(lines):
@@ -447,10 +453,11 @@ def parse_md(doc, md, fig_dir=None, cap_map=None, en_map=None, in_body=True):
                     continue
                 rows.append(cells)
             if rows:
-                add_md_table(doc, rows, cap_cn=s, cap_en=en_map[m.group(2)],
+                add_md_table(doc, rows, cap_cn=s, cap_en=(en_map or {}).get(m.group(2), ""),
                              font=9.0 if len(rows) > 12 else 10.5)
-            i = j
-            continue
+                i = j
+                continue
+            # 表题后无表行：题注按正文段落保留（不吞行）
         if in_body:
             add_body(doc, s, kai=s.startswith("本章待核实清单"))
         else:
