@@ -4,7 +4,9 @@
 运行：python tests/v1_6/run_all.py
 Phase 1 模块：test_state_transition / test_checkpoint / test_material_ingestion /
 test_school_context。Phase 2 模块：test_research_context / test_stage_routing。
-后续 Phase 的测试文件加入 TESTS 即可。
+Phase 3 模块：test_orchestrator / test_resume / test_failure_recovery /
+test_agent_loop_integration。Phase 4 模块：test_figure_iface / test_thesis_build /
+test_delivery_gate。后续 Phase 的测试文件加入 TESTS 即可。
 """
 import os
 import subprocess
@@ -23,6 +25,9 @@ TESTS = [
     "test_resume.py",
     "test_failure_recovery.py",
     "test_agent_loop_integration.py",
+    "test_figure_iface.py",
+    "test_thesis_build.py",
+    "test_delivery_gate.py",
 ]
 
 

@@ -48,6 +48,7 @@ import research_diagnosis as RDIA
 import research_repair as RRP
 import research_agent_loop as AL
 import research_quality_qa as RQA
+import delivery_gate as DG
 
 STAGE_ORDER = SR.STAGES
 DRIVE_DEFAULT_MAX = 25          # 总步数保护（防驱动层无限循环；阶段内轮次保护由 v1.5 loop 负责）
@@ -391,11 +392,14 @@ def step(root):
     # stay（末阶段或人工复核挂起）
     if soft:
         log_action(root, cur, "drift 软提示", None, {"problems": soft}, "NEEDS_HUMAN_REVIEW")
-    gate = SR.delivery_gate_status(root)
+    gate = DG.aggregate(root)
     log_action(root, cur, "stay", {"gate": gate["status"]}, gate,
                gate["status"])
     return (0 if gate["status"] in ("PASS", "PASS_WITH_WARNINGS", "PASS_WITH_HUMAN_REVIEW") else 1), \
-        {"action": "FINALIZE" if gate["status"] != "BLOCK" else "BLOCK", "gate": gate,
+        {"action": "FINALIZE" if gate["status"] not in ("BLOCK", "ERROR") else "BLOCK",
+         "gate": {"status": gate["status"],
+                  "blocking": [x["gate_id"] for x in gate["items"]
+                               if x["status"] in ("FAIL", "ERROR", "NEEDS_HUMAN_REVIEW")]},
          "soft_drift": soft}
 
 
@@ -514,7 +518,7 @@ def main(argv=None):
             print(f"ERROR: {e}"); return 3
         v = {"stage": (state.get("stage") or {}).get("current"),
              "route": r, "research_context": ctx["status"],
-             "gate": SR.delivery_gate_status(root),
+             "gate": DG.aggregate(root),
              "drift": [p["code"] for p in drift_checks(root)[0]]}
         if a.json:
             print(json.dumps(v, ensure_ascii=False, indent=1))
@@ -560,7 +564,7 @@ def main(argv=None):
         print(json.dumps(res, ensure_ascii=False, default=str))
         return rc
     if a.cmd == "gate":
-        d = SR.delivery_gate_status(root)
+        d = DG.aggregate(root, write=True)
         print(json.dumps(d, ensure_ascii=False, indent=1) if a.json else f"Delivery Gate: {d['status']}")
         return 0 if d["status"] in ("PASS", "PASS_WITH_WARNINGS", "PASS_WITH_HUMAN_REVIEW") else 1
     if a.cmd == "actions":
