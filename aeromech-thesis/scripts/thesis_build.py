@@ -202,11 +202,11 @@ def _chapter_md(root, rel):
 
 
 def _fig_maps(contract, root):
-    """cap_map: display（图3-1）→ (文件名, 中文题注)；供 parse_md 插图。"""
+    """cap_map: 编号（parse_md 的 "1-1" 语义，display 去图/表前缀）→ (文件名, 中文题注)。"""
     cap_map, en_map = {}, {}
     figdir = None
     for fg in contract.get("figures") or []:
-        disp = str(fg.get("display", ""))
+        disp = re.sub(r"^[图表]\s*", "", str(fg.get("display", "")))
         fname = os.path.basename(fg.get("file", ""))
         if disp and fname:
             cap_map[disp] = (fname, fg.get("caption_cn", ""))
@@ -256,9 +256,44 @@ def build_docx(root, contract=None):
                         fresh_cover=True)
         E.add_page_number_once(doc)
     doc.save(out)
+    _mark_embedded(root, c, cap_map, figdir)
     return out, {"mode": mode, "template": v["template"], "sha256": _sha(out),
                  "content_identity": content_identity(out),
                  "chapters": len(content.get("chapters") or [])}
+
+
+def _mark_embedded(root, c, cap_map, figdir):
+    """诚实记录：仅当章节 md 的占位行会被 parse_md 同一正则命中、且图文件在场时，
+    才记 EMBEDDED。只为已有 VALIDATED/GENERATED 状态的图补记录，不凭空创建。"""
+    if not cap_map or not figdir:
+        return
+    fid_by_name = {os.path.basename(str(f.get("file", ""))): str(f.get("figure_id"))
+                   for f in (c.get("figures") or []) if f.get("file")}
+    hit_keys = set()
+    md_re1 = re.compile(r"^（图(\d+-\d+)[^）]*（[^）]*）[^）]*）$")
+    md_re2 = re.compile(r"^（图(\d+-\d+)[^）]*）$")
+    for f in c.get("content", {}).get("chapters") or []:
+        try:
+            with open(os.path.join(root, ".aeromech", f), encoding="utf-8") as fh:
+                for ln in fh:
+                    m = md_re1.match(ln.strip()) or md_re2.match(ln.strip())
+                    if m and m.group(1) in cap_map:
+                        hit_keys.add(m.group(1))
+        except OSError:
+            continue
+    for disp in hit_keys:
+        val = cap_map.get(disp)
+        fname = val[0] if isinstance(val, tuple) else None
+        if not fname or not os.path.isfile(os.path.join(figdir, fname)):
+            continue
+        fid = fid_by_name.get(fname)
+        if not fid:
+            continue
+        cur, _ = FI.current_status(root, fid)
+        if cur in ("VALIDATED", "GENERATED"):
+            FI.record(root, fid, "EMBEDDED",
+                      artifact=os.path.join(figdir, fname).replace("\\", "/"),
+                      reason="统一构建 figure_block 插入（章节占位行命中）")
 
 
 class BuildError(Exception):
