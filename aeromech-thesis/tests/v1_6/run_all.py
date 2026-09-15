@@ -19,6 +19,10 @@ TESTS = [
     "test_school_context.py",
     "test_research_context.py",
     "test_stage_routing.py",
+    "test_orchestrator.py",
+    "test_resume.py",
+    "test_failure_recovery.py",
+    "test_agent_loop_integration.py",
 ]
 
 

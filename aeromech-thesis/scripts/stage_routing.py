@@ -376,10 +376,13 @@ def route(root):
         completed.append(cur)
 
     blocked, block_reason = False, ""
+    # 研究完整性/闭环门禁在 S7+ 才作为 blocked 依据（S1-S6 阶段 RQG/loop 属"提前评估"，
+    # 其 FAIL 不作为阶段推进的阻塞——设计类 INFEASIBLE 由 feasibility gate 独立把关，不受此限）
+    quality_stage = STAGES.index(cur) >= STAGES.index("S7")
     # 硬门禁（§十三 + loop BLOCK + RQG FAIL + 证据 ERROR）：停留并给建议
     if gs["feasibility"]["status"] == "FAIL":
         blocked, block_reason = True, "feasibility INFEASIBLE：研究设计不可行，禁止进入写作/交付（停留本阶段或回退 S3）"
-    if gs["agent_loop"]["status"] == "FAIL" or gs["rqg"]["status"] == "FAIL":
+    if (gs["agent_loop"]["status"] == "FAIL" or gs["rqg"]["status"] == "FAIL") and quality_stage:
         blocked = True
         block_reason = block_reason or (
             f"RQG={gs['rqg'].get('gate')} / Agent Loop 终态 "
