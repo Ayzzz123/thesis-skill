@@ -418,7 +418,10 @@ def _stage_exit_evidence(root, stage):
         elif "." in pr:
             base, _, _rest = pr.partition("==")
             val = SR._get_path(st, base) if base.split(".")[0] in ("research", "project", "writing") else None
-            if val:
+            if val and ("/" in str(val) or str(val).endswith((".md", ".docx", ".pdf", ".yaml", ".json", ".csv"))):
+                # 仅当字段值本身是路径（如 literature_file）才计入 evidence；
+                # 枚举值（writing.status=draft_done）不是文件，计入会在 validate
+                # 触发“证据路径不存在”假阳性（test-8.0 S7→S8 实测发现）。
                 out.append(str(val))
     return [x for x in out if x]
 

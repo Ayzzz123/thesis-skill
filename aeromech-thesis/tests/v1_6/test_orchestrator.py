@@ -67,6 +67,16 @@ def main():
     check("ORCH-01 history 记 forward 且迁移由 thesis_state 完成",
           st["stage"]["history"][-1]["type"] == "forward"
           and len(st["stage"]["history"]) == 3)
+    # 出口证据收集：枚举值（writing.status=draft_done）不是文件，不得写入 evidence
+    #（test-8.0 S7→S8 实测发现：假路径触发 validate ST-FIELD "证据路径不存在"）
+    stx, _ = TS.load_state(root)
+    stx["stage"]["current"] = "S7"
+    stx["writing"]["status"] = "draft_done"
+    stx["writing"]["chapters"] = {"ch3": {"file": "artifacts/chapters/ch3.md"}}
+    TS.save_state(root, stx)
+    evs = ORCH._stage_exit_evidence(root, "S7")
+    check("ORCH-01b exit evidence 只收路径值、不收枚举值",
+          all("draft_done" != x for x in evs), str(evs))
 
     # ---------- ORCH-02 非法前进：拒绝且不落盘 ----------
     root2 = F.make_project(os.path.join(tmp, "illegal"))
