@@ -147,7 +147,10 @@ def drift_checks(root, state=None, ctx=None):
                          "detail": f"state={st_stage} 但 checkpoint {v['checkpoint']} 记 {v['checkpoint_stage']}",
                          "disposition": "NEEDS_HUMAN_REVIEW"})
     reg_stage = registry_stage(ctx)
-    if reg_stage and st_stage and STAGE_ORDER.index(reg_stage) > STAGE_ORDER.index(st_stage):
+    # 阈值校准：相邻阶段（gap=1，如 S5↔S6 双向工作/提前半拍登记）属 state.md §3 合法边内的正常
+    # 重叠，不算漂移；超前 ≥2 阶段（如 S4 出现 S7 级 claims/figures）才判 REGISTRY_DRIFT。
+    if (reg_stage and st_stage and
+            STAGE_ORDER.index(reg_stage) - STAGE_ORDER.index(st_stage) >= 2):
         problems.append({"code": "REGISTRY_DRIFT",
                          "detail": f"state={st_stage}，但注册表已含 {reg_stage} 级内容（不得静默覆盖：人工确认或补 state 迁移记录）",
                          "disposition": "NEEDS_HUMAN_REVIEW"})

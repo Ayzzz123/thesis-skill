@@ -74,7 +74,7 @@ Resume/Step 前置漂移检查（`drift_checks()`，发现差异**绝不静默�
 | code | 触发条件 | 处置 |
 |---|---|---|
 | `STATE_DRIFT` | checkpoint.stage ≠ state.stage | NEEDS_HUMAN_REVIEW（人工确认差异） |
-| `REGISTRY_DRIFT` | 注册表内容阶段超前 state.stage | NEEDS_HUMAN_REVIEW（不得静默改 state） |
+| `REGISTRY_DRIFT` | 注册表推断阶段超前 state.stage **≥2**（相邻半拍如 S5↔S6 双向工作属 state.md §3 合法重叠；提前注册 claims/conclusions/figures 这类写作期产物则触发） | NEEDS_HUMAN_REVIEW（不得静默改 state） |
 | `ARTIFACT_MISSING` | checkpoint 登记产物丢失 | ERROR（rc3） |
 | `ARTIFACT_CHANGED` | 产物 sha256 与登记不符（构建/检查点后被改动） | NEEDS_HUMAN_REVIEW（不得默默继续） |
 | `STATE_INVALID` | state 词表校验违规 | ERROR |
