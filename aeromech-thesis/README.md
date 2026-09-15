@@ -304,6 +304,17 @@ mmdc 失败 → matplotlib 生成真正可读的替代图（含流程图框/故�
 
 **aeromech-thesis v1.5.0（Research Intelligence & Agent Loop）**
 
+> **v1.6.0 development / roadmap（开发分支 feature-1.6.0-full-stack-orchestration，未发布）**：
+> 目标是 Full-Stack Thesis Orchestration——把既有能力串成完整、可恢复、可交付的毕业论文 Agent：
+> StateIO + Checkpoint + Resume、统一材料进入（Material Ingestion）、School Requirement Context、
+> Research Context 聚合、阶段调度矩阵、Thesis Orchestrator（Action 模型 + 五策略 Failure Recovery +
+> Drift 检测）、Figure Provider 接口（不复制 Figure Engine）、统一 Thesis Build Pipeline +
+> Artifact Manifest、Delivery Gate 全聚合。规则见 `references/orchestration.md`，SKILL.md §21。
+> 进度：Phase 0~5 已完成（tests/v1_4 / v1_4_1 / v1_5 / v1_6 与 test_a/b 全绿，t30~t70 外部回归绿）；
+> **Phase 6（test-8.0 全栈冷启动）与 Phase 7（Release Candidate 判定）未完成**——v1.6.0 正式版本号
+> 只有在 test-8.0 + 全回归 + 全 QA 全部 PASS 后才从 v1.5.0 升级。开发分支行为不构成本 README
+> 所述 v1.5.0 的能力承诺；发布后本节将并入 §2/§11。
+
 v1.5.0 在 v1.4.1 稳定基线之上新增研究智能层（发现→诊断→修复→再验证闭环），既有能力只增不破：
 - ✅ **Research Design Registry**：design.yaml/scope.yaml/repairs.yaml 三注册表（随注册表引擎，缺省 N/A 兼容旧项目）
 - ✅ **方法选择审计 + Research Feasibility Gate（RF-01~10）**：needs⊆provides、evidence_requirement×实际数据、

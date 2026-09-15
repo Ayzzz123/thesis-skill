@@ -6,7 +6,8 @@ Phase 1 模块：test_state_transition / test_checkpoint / test_material_ingesti
 test_school_context。Phase 2 模块：test_research_context / test_stage_routing。
 Phase 3 模块：test_orchestrator / test_resume / test_failure_recovery /
 test_agent_loop_integration。Phase 4 模块：test_figure_iface / test_thesis_build /
-test_delivery_gate。后续 Phase 的测试文件加入 TESTS 即可。
+test_delivery_gate。Phase 5 模块：test_document_contract（文档=代码一致性锁）。
+后续 Phase 的测试文件加入 TESTS 即可。
 """
 import os
 import subprocess
@@ -28,6 +29,7 @@ TESTS = [
     "test_figure_iface.py",
     "test_thesis_build.py",
     "test_delivery_gate.py",
+    "test_document_contract.py",
 ]
 
 
