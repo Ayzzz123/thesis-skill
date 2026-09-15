@@ -330,7 +330,7 @@ def preconditions(state, root, f, t, kind):
         problems.append("S3→S4 要求研究方案已落盘（research.plan_file）")
     if t == "S7":
         status, gp = check_gate_evidence(state, root)
-        if kind != "override" and status == "failed":
+        if status == "failed":
             problems.extend(f"门禁证据不通过：{x['reason']}" for x in gp)
     if f == "S4" and t == "S7" and res.get("literature_status") != "reviewed":
         problems.append("S4→S7 要求 literature_status=reviewed（§3）")
@@ -372,7 +372,10 @@ def transition(root, to, htype=None, reason="", evidence=None, issue_id=None, ov
         if not (reason or issue_id):
             return False, {"reason": "回退必须有触发源（reason 或 issue_id，state.md §4 第 4 步）",
                            "repaired": repaired}
-    probs = preconditions(state, root, f, to, kind)
+    if requested == "milestone":
+        probs = []          # 阶段内里程碑不重复校验进入该阶段的前置（state.md §6）
+    else:
+        probs = preconditions(state, root, f, to, kind)
     if requested == "override" and probs:
         # 强行推进：需 note（二次确认记录）+ 挂 open_issue（§9）
         if not override_note:
