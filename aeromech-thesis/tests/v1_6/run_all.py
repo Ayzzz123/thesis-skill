@@ -3,7 +3,8 @@
 
 运行：python tests/v1_6/run_all.py
 Phase 1 模块：test_state_transition / test_checkpoint / test_material_ingestion /
-test_school_context。后续 Phase 的测试文件加入 TESTS 即可。
+test_school_context。Phase 2 模块：test_research_context / test_stage_routing。
+后续 Phase 的测试文件加入 TESTS 即可。
 """
 import os
 import subprocess
@@ -16,6 +17,8 @@ TESTS = [
     "test_checkpoint.py",
     "test_material_ingestion.py",
     "test_school_context.py",
+    "test_research_context.py",
+    "test_stage_routing.py",
 ]
 
 
