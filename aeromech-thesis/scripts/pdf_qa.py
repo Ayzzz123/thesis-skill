@@ -103,16 +103,45 @@ def main():
     print(f"检测到 图+题注 同页 的图块数: {fig_found}")
 
     # ---- Heading 存在性（章标题；兼容 阿拉伯/中文数字 两种章编号体系）----
-    CN = {"1": "一", "2": "二", "3": "三", "4": "四", "5": "五", "6": "六"}
+    # v1.6 test-8.0 通用化：不假定论文章数/附录数——发现编号体系后要求从第1章起
+    # 连续覆盖（≥2 章）；参考文献/致谢必备；附录按字母连续（有B必有A）。
+    import re as _re
+    CN_DIG = {"一": 1, "二": 2, "三": 3, "四": 4, "五": 5, "六": 6,
+              "七": 7, "八": 8, "九": 9, "十": 10}
     full_norm = full.replace(" ", "").replace("\u3000", "").replace("\n", "")
-    arabic_style = all(f"第{k}章" in full_norm for k in CN)
-    cn_style = all(f"第{CN[k]}章" in full_norm for k in CN)
     missing_heads = []
-    if not (arabic_style or cn_style):
-        missing_heads += [f"第{k}章/第{CN[k]}章" for k in CN]
-    for h in ["参考文献", "致谢", "附录A", "附录B"]:
+
+    def chapter_nums(arabic):
+        nums = set()
+        if arabic:
+            for m in _re.finditer(r"第(\d{1,2})章", full_norm):
+                nums.add(int(m.group(1)))
+        else:
+            for ch, n in CN_DIG.items():
+                if f"第{ch}章" in full_norm:
+                    nums.add(n)
+        return nums
+
+    ar, cn = chapter_nums(True), chapter_nums(False)
+    if not ar and not cn:
+        missing_heads.append("未检测到任何章编号（第1章/第一章）")
+    else:
+        best = ar if len(ar) >= len(cn) else cn
+        mx = max(best)
+        if mx < 2:
+            missing_heads.append("章数异常（仅检出 1 章）")
+        gaps = [k for k in range(1, mx + 1) if k not in best]
+        if gaps:
+            missing_heads.append("章编号不连续: 缺 " +
+                                 ",".join(f"第{k}章" for k in gaps))
+    for h in ["参考文献", "致谢"]:
         if h not in full_norm:
             missing_heads.append(h)
+    for letter in "ABCDEFGH":
+        cur, nxt = f"附录{letter}", f"附录{chr(ord(letter) + 1)}"
+        if nxt in full_norm and cur not in full_norm:
+            missing_heads.append(f"附录字母不连续：缺{cur}")
+            break
     if missing_heads:
         CRITICAL_ISSUES.append(f"章节标题缺失: {missing_heads}")
 

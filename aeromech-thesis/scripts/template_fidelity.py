@@ -198,6 +198,35 @@ def first_sectpr_anchor_after(doc, element):
     return None
 
 
+def last_sectpr_anchor_before(doc, element):
+    """返回 element 之前最后一个含 pPr/sectPr 的段落元素（节起始锚），无则 None。"""
+    found = None
+    for child in body_element_list(doc):
+        if child is element:
+            return found
+        if child.tag == qn("w:p"):
+            pPr = child.find(qn("w:pPr"))
+            if pPr is not None and pPr.find(qn("w:sectPr")) is not None:
+                found = child
+    return None
+
+
+def strip_all_pgnumtype(doc):
+    """剥除正文中所有段落级 sectPr 的 pgNumType（封面/扉页不显示页码；
+    内容节页码由 add_section_continue/set_pgnum 重建）。返回剥除数。"""
+    from docx.oxml.ns import qn
+    n = 0
+    for child in body_element_list(doc):
+        if child.tag == qn("w:p"):
+            pPr = child.find(qn("w:pPr"))
+            sp = pPr.find(qn("w:sectPr")) if pPr is not None else None
+            pg = sp.find(qn("w:pgNumType")) if sp is not None else None
+            if pg is not None:
+                sp.remove(pg)
+                n += 1
+    return n
+
+
 def trim_body_after(doc, anchor, keep_final_sectpr=True):
     """删除 anchor 之后、body 级 sectPr 之前的所有内容（样例区），保留结构部件。
     anchor 段落本身保留（作为前一节的结束锚点）。返回删除元素数。"""
@@ -219,17 +248,75 @@ def trim_body_after(doc, anchor, keep_final_sectpr=True):
     return removed
 
 
+def trim_body_before(doc, anchor, keep_anchor=True):
+    """删除 anchor 之前（不含 body 级 sectPr）的所有内容。v1.6 test-8.0：
+    母版为"规范说明+封面样例"合一文档时，先剪掉封面之前的说明页区，使封面节
+    成为第一节。keep_anchor=False 时锚点段本身也删除（其 sectPr 属于被剪掉的
+    前一节——留着会产生一个空白首节页）。"""
+    body = doc.element.body
+    removed = 0
+    for el in list(body.iterchildren()):
+        if el is anchor:
+            if not keep_anchor and el.tag != qn("w:sectPr"):
+                body.remove(el)
+                removed += 1
+            break
+        if el.tag == qn("w:sectPr"):
+            continue
+        body.remove(el)
+        removed += 1
+    return removed
+
+
 def remove_anchor_paragraph(doc, anchor):
     """删除中间节锚点段落（用于把两个模板节合并为一个内容节）。"""
     doc.element.body.remove(anchor)
 
 
+def strip_page_break_runs(p_el):
+    """删除段落内的显式分页符 run（w:br w:type="page"）。母版节锚点段常带分页符，
+    裁剪后保留锚点段会额外产生空白页；节断开本身已起新页（test-8.0 母版实测）。
+    返回删除数。"""
+    n = 0
+    for r in list(p_el.iter(qn("w:r"))):
+        for br in r.findall(qn("w:br")):
+            if br.get(qn("w:type")) == "page":
+                r.remove(br)
+                n += 1
+        if n and not r.findall(qn("w:t")) and not r.findall(qn("w:br")) \
+                and not r.findall(qn("w:drawing")) and not r.findall(qn("w:pict")):
+            r.getparent().remove(r)
+    return n
+
+
 # ---------------- 封面字段填值 ----------------
-def fill_cover_fields(doc, values):
-    """values: {模板标签前缀: 值}；在首个 1x1 表格内定位标签段并填值。
-    优先使用标签后第一个空段；无空段则在同一段末尾追加。缺失字段保持空槽。"""
+def _norm_label(s):
+    return re.sub(r"[\s　:：]", "", s or "")
+
+
+_PH_RE = re.compile(r"^[Xx×]{2,}\S{0,6}$|^[\sXx×]{2,}$")
+
+
+def _looks_ph(txt):
+    """封面值槽占位判定：整段以 X 结尾（"张 X"）或含连续 X 占位（"XXXX"/"2018XXXXXX"）。"""
+    t = (txt or "").strip()
+    if not t:
+        return False
+    return bool(re.search(r"[Xx×]{1,}\s*$", t) or re.search(r"[Xx×]{2,}", t))
+
+
+def fill_cover_fields(doc, values, table_limit=None):
+    """values: {模板标签: 值}。table_limit=None（v1.5 兼容）：在首个 1x1 表格内定位
+    标签段并填值（标签后空段/同行追加）。
+    table_limit=整数：v1.6 test-8.0 通用封面——在全部封面表（前 table_limit 张）内做
+    标签归一匹配（去空白/冒号），值写入：①同行下一格含占位（X 式）→ 替换占位段保留
+    首 run 格式（下划线）；②同格标签段之后首个占位/空段 → 填入；非占位静态文本不猜写
+    （记未填，交付报告披露）。返回 {label: value}（已填）。"""
     if not doc.tables:
         return {}
+    tables = doc.tables[:table_limit] if table_limit else doc.tables[:1]
+    if table_limit:
+        return _fill_cover_grid(tables, values)
     cell = doc.tables[0].cell(0, 0)
     paras = cell.paragraphs
     filled = {}
@@ -246,6 +333,84 @@ def fill_cover_fields(doc, values):
                 E.set_font(run, "宋体", 14)
                 filled[label] = str(value)
                 break
+    return filled
+
+
+def _replace_placeholder_para(p, value):
+    """占位段 → 值：保留首 run 格式（字体/下划线），其余 run 清空（"张 X" 跨 run 场景）。"""
+    runs = p.runs
+    if not runs:
+        p.add_run(str(value))
+        return True
+    runs[0].text = str(value)
+    for r in runs[1:]:
+        r.text = ""
+    return True
+
+
+def _fill_cover_grid(tables, values):
+    """同一标签在多张封面表（封面页+扉页）出现时全部填充：逐表独立搜索，每表至多填一处。
+    v1.6 test-8.0 通用规则（表单语义）：值槽=标签右侧同行第一个非标签格（文本归一后
+    不以冒号结尾即为值槽，如 "XXXXXX"/"张 X"/"专业名称"/"XX学院"），整格重写为值并
+    保留格式；右侧无值槽（单格封面表，如南京农大式"标签段+空段"）→ 标签段后首个
+    占位/空段填入。契约未映射的字段不动（示例文本原样保留）。"""
+    filled = {}
+    known_labels = {_norm_label(k) for k in values}
+
+    def is_label_cell(txt):
+        # 表单语义：标签格以冒号结尾（"姓    名："），值格不以冒号结尾（"张 X"）
+        t = (txt or "").strip()
+        return t.endswith(":") or t.endswith("：")
+
+    for label, value in values.items():
+        if value is None or str(value).strip() == "":
+            continue
+        nl = _norm_label(label)
+        for t in tables:
+            hit = False
+            for row in t.rows:
+                cells = row.cells
+                for ci, cell in enumerate(cells):
+                    lab_p = next((p for p in cell.paragraphs
+                                  if nl and nl in _norm_label(p.text)), None)
+                    if lab_p is None:
+                        continue
+                    # ①右侧同行第一个非标签格 = 值槽
+                    for cj in range(ci + 1, len(cells)):
+                        vc = cells[cj]
+                        vt = "".join(p.text for p in vc.paragraphs).strip()
+                        if vt and is_label_cell(vt):
+                            continue
+                        paras = vc.paragraphs
+                        first = next((p for p in paras if p.text.strip()), paras[0])
+                        _replace_placeholder_para(first, value)
+                        for p in paras:
+                            if p is not first and p.text.strip():
+                                for r in p.runs:
+                                    r.text = ""
+                        filled[label] = str(value)
+                        hit = True
+                        break
+                    if hit:
+                        break
+                    # ②同格标签段之后的占位/空段（单格封面表）
+                    paras = cell.paragraphs
+                    for k in range(paras.index(lab_p) + 1, len(paras)):
+                        p = paras[k]
+                        if _looks_ph(p.text):
+                            _replace_placeholder_para(p, value)
+                            filled[label] = str(value)
+                            hit = True
+                            break
+                        if not p.text.strip():
+                            p.add_run(str(value))
+                            filled[label] = str(value)
+                            hit = True
+                            break
+                    if hit:
+                        break
+                if hit:
+                    break
     return filled
 
 

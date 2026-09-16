@@ -192,12 +192,17 @@ content: {abstract_zh|abstract_zh_file, keywords, abstract_en|abstract_en_file, 
           chapters: [相对 .aeromech 路径], references_file, appendices: [{title, file}],
           ack_text|ack_file}                     # chapters 必填非空；文件缺失/空=ERROR
 research: {required: false}                      # 注册表在场性由引擎判定（缺席=N/A 不伪造）
-school_format: {template}                        # 缺→FORMAT_RECONSTRUCTION+N/A 披露
+school_format: {template, template_pdf, cover_tables: [0,1],      # 缺→FORMAT_RECONSTRUCTION
+                 cover_fields: {封面标签: project.<k>|content.<k>|字面量},
+                 cover_text_fills: {占位文本: 取值}}   # template_pdf=封面参考页 PDF；
+                                                 # cover_tables=保留母版封面区表索引（其余节剪除）；
+                                                 # cover_fields/cover_text_fills 通用封面填充（v1.6）
 figures: [{figure_id, display, file, caption_cn, caption_en}]   # display 归一；图英文题注进图块（双语）
 tables: [{display, caption_en}] | {captions: [...]}  # 表体由章节 md 的"表题行+管道行"经
                                                  # parse_md 渲染（v1.6 接通：本字段只提供
                                                  # 英文题注，图 QA 双语题注需要它）
-output: {docx: 毕业论文.docx, pdf: 毕业论文.pdf}    # qa: {out: artifacts/qa}
+output: {docx: 毕业论文.docx, pdf: 毕业论文.pdf}
+qa: {out: artifacts/qa, tables_min: 5}          # tables_min=figure_table 表数下限（默认 15）
 ```
 
 缺失语义：**required 缺→ERROR（列出全部缺项）；optional 缺→NOT_APPLICABLE 如实披露；

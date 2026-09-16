@@ -245,21 +245,40 @@ def build_docx(root, contract=None):
 
     if mode == TF.MODE_TEMPLATE_FIDELITY:
         doc = TF.open_master(v["template"], out)
-        # 保留封面（+声明）至首个节锚点，剪掉样例内容区（v1.1.0 母版驱动纪律）
         from docx.oxml.ns import qn
-        first_tbl = None
-        for el in doc.element.body.iterchildren():
-            if el.tag == qn("w:tbl"):
-                first_tbl = el
-                break
-        anchor = TF.first_sectpr_anchor_after(doc, first_tbl) if first_tbl is not None else None
+        sf = c.get("school_format") or {}
+        cover_tables = sf.get("cover_tables")  # 保留的封面区表索引（如 [0,1]=封面+扉页）
+        tbl_els = [el for el in doc.element.body.iterchildren() if el.tag == qn("w:tbl")]
+        if cover_tables:
+            idxs = [int(i) for i in cover_tables if 0 <= int(i) < len(tbl_els)]
+            first_tbl = tbl_els[min(idxs)] if idxs else None
+            keep_through = tbl_els[max(idxs)] if idxs else None
+            # 前置裁剪：封面区之前是母版的规范说明页时（last_sectpr_anchor_before 找到
+            # 封面前最后一个节锚点），把锚点段之前（含锚点段=前一节终结段）全部删除，
+            # 文档以封面节为第一节。无锚点（封面即文档开头）→ 不动（v1.5 兼容）。
+            if first_tbl is not None:
+                front_anchor = TF.last_sectpr_anchor_before(doc, first_tbl)
+                if front_anchor is not None:
+                    # keep_anchor=False：锚点段的 sectPr 属于被剪掉的说明节，留着会产生
+                    # 空白首节页；删除后文档以封面内容为第一节。
+                    TF.trim_body_before(doc, front_anchor, keep_anchor=False)
+        else:
+            keep_through = tbl_els[0] if tbl_els else None  # v1.5 兼容：首表+首锚点
+        anchor = TF.first_sectpr_anchor_after(doc, keep_through) if keep_through is not None else None
         if anchor is not None:
             TF.trim_body_after(doc, anchor)
-            sp = anchor.find(qn("w:pPr")).find(qn("w:sectPr"))
-            pg = sp.find(qn("w:pgNumType"))
-            if pg is not None:
-                sp.remove(pg)
-        TF.fill_cover_fields(doc, {"题    目": proj["title"], "专    业": proj.get("major", "")})
+            # 锚点段本身删除：其节属性与母版 body 级 sectPr 之间不留空节
+            #（否则 _append_content 的 add_section 在其前再闭一节 → 空白页，
+            #  test-8.0 P4 实测）。封面/扉页区的节由前部锚点界定，不受影响。
+            TF.remove_anchor_paragraph(doc, anchor)
+        TF.strip_all_pgnumtype(doc)  # 封面/扉页不显示页码；内容节页码由 _append_content 重建
+        values = _cover_values(sf, proj, content)
+        table_limit = (max(int(i) for i in cover_tables) + 1) if cover_tables else None
+        filled = TF.fill_cover_fields(doc, values, table_limit=table_limit)
+        texts = _fill_cover_texts(doc, sf.get("cover_text_fills"), proj, content)
+        cover_info = {"filled": sorted(filled),
+                      "unfilled": sorted(set(values) - set(filled)),
+                      "text_filled": sorted(texts)}
         _append_content(root, doc, c, v, cap_map, en_map, figdir, roman_front=True,
                         fig_en_map=fig_en_map)
     else:
@@ -267,14 +286,82 @@ def build_docx(root, contract=None):
         doc = Document()
         sec = doc.sections[0]
         E.setup_section(sec)
+        cover_info = None
         _append_content(root, doc, c, v, cap_map, en_map, figdir, roman_front=False,
                         fresh_cover=True, fig_en_map=fig_en_map)
         E.add_page_number_once(doc)
     doc.save(out)
     _mark_embedded(root, c, cap_map, figdir)
     return out, {"mode": mode, "template": v["template"], "sha256": _sha(out),
-                 "content_identity": content_identity(out),
+                 "content_identity": content_identity(out), "cover": cover_info,
                  "chapters": len(content.get("chapters") or [])}
+
+
+def _cover_values(sf, proj, content):
+    """school_format.cover_fields: {封面标签: 取值来源}；来源支持 project.<key>/
+    content.<key>/字面量。无配置→v1.5 兼容硬编码（题/专业）。"""
+    fields = sf.get("cover_fields")
+    if not fields:
+        return {"题    目": proj["title"], "专    业": proj.get("major", "")}
+    out = {}
+    for label, src in fields.items():
+        s = str(src)
+        if s.startswith("project."):
+            v = proj.get(s[8:])
+        elif s.startswith("content."):
+            v = content.get(s[8:])
+        else:
+            v = s
+        if v is not None and str(v).strip():
+            out[label] = str(v)
+    return out
+
+
+def _fill_cover_texts(doc, fills, proj=None, content=None):
+    """封面正文段/表内段的字面占位替换（如日期"二○XX年X月"——封面与扉页各一处，
+    同一值全部填充）。值支持 project.<k>/content.<k>/字面量（与 cover_fields 同一
+    取值语法）。跨 run 时折叠重写（保留首 run 格式）。未命中的如实进 unfilled 披露。"""
+    filled = {}
+    if not fills:
+        return filled
+    proj = proj or {}
+    content = content or {}
+    paras = list(doc.paragraphs)
+    for t in doc.tables:
+        for r in t.rows:
+            for cell in r.cells:
+                paras.extend(cell.paragraphs)
+    for pattern, src in fills.items():
+        s = str(src)
+        if s.startswith("project."):
+            value = proj.get(s[8:])
+        elif s.startswith("content."):
+            value = content.get(s[8:])
+        else:
+            value = s
+        if value is None or not str(value).strip():
+            continue
+        n_hit = 0
+        for p in paras:
+            if pattern in p.text:
+                done = False
+                for run in p.runs:
+                    if pattern in run.text:
+                        run.text = run.text.replace(pattern, str(value))
+                        done = True
+                        break
+                if not done and p.runs:
+                    full = "".join(r.text or "" for r in p.runs)
+                    if pattern in full:
+                        p.runs[0].text = full.replace(pattern, str(value))
+                        for r in p.runs[1:]:
+                            r.text = ""
+                        done = True
+                if done:
+                    n_hit += 1
+        if n_hit:
+            filled[pattern] = str(value)
+    return filled
 
 
 def _mark_embedded(root, c, cap_map, figdir):
@@ -493,6 +580,18 @@ def pipeline(root, steps=None):
     tpl = (c.get("school_format") or {}).get("template")
     tpl_abs = os.path.join(root, tpl) if tpl else TF.select_docx_mode(
         os.path.join(root, "materials", "school"))[1]
+    # 模板 PDF（母版导出的视觉基准）：与 tpl 同路径的 .pdf，或契约显式 template_pdf；
+    # 供 cover_align/cover_fill/color/page 的 --template-pdf 使用（缺则这些步按依赖跳过）。
+    tpl_pdf = None
+    if tpl_abs:
+        cand = [(c.get("school_format") or {}).get("template_pdf"),
+                os.path.splitext(tpl_abs)[0] + ".pdf"]
+        for x in cand:
+            if x:
+                xp = os.path.join(root, x) if not os.path.isabs(x) else x
+                if os.path.isfile(xp):
+                    tpl_pdf = xp
+                    break
     py = sys.executable
 
     def log_step(s):
@@ -567,12 +666,39 @@ def pipeline(root, steps=None):
             ("content_purity", [py, os.path.join(SCRIPTS, "content_purity_qa.py"),
                                 "--docx", abs_docx, "--pdf", abs_pdf if pdf_ok else "none",
                                 "--out", qa_out], docx_ok),
+            # v1.6 test-8.0 接通：delivery gate 的 FORMAT_REPORTS 列 10 项格式 QA，
+            # 此前 chain 只跑 5 项（cover_align/cover_fill/color/page/table 从未执行
+            # →报告永远缺席）。全部为既有脚本，按各自 CLI 挂进链。
+            ("cover_align", [py, os.path.join(SCRIPTS, "cover_align_qa.py"),
+                             "--pdf", abs_pdf,
+                             *(["--template-pdf", tpl_pdf] if tpl_pdf else []),
+                             "--out", qa_out], bool(tpl_pdf) and pdf_ok),
+            ("cover_fill", [py, os.path.join(SCRIPTS, "cover_fill_qa.py"),
+                            "--pdf", abs_pdf,
+                            *(["--template-pdf", tpl_pdf] if tpl_pdf else []),
+                            "--out", qa_out], bool(tpl_pdf) and pdf_ok),
+            ("color_fidelity", [py, os.path.join(SCRIPTS, "color_fidelity_qa.py"),
+                                "--docx", abs_docx, "--pdf", abs_pdf,
+                                *(["--template-docx", tpl_abs, "--template-pdf", tpl_pdf]
+                                  if tpl_pdf and tpl_abs else []),
+                                "--out", qa_out], docx_ok and pdf_ok),
+            ("page_fidelity", [py, os.path.join(SCRIPTS, "page_fidelity_qa.py"),
+                               "--docx", abs_docx, "--pdf", abs_pdf,
+                               *(["--template-pdf", tpl_pdf] if tpl_pdf else []),
+                               *(["--en-title", c["content"]["abstract_en"]]
+                                 if c.get("content", {}).get("abstract_en") else []),
+                               "--out", qa_out], docx_ok and pdf_ok),
+            ("table_readability", [py, os.path.join(SCRIPTS, "table_readability_qa.py"),
+                                   "--docx", abs_docx, "--pdf", abs_pdf,
+                                   "--out", qa_out], docx_ok and pdf_ok),
         ]
         figdir = os.path.join(root, ".aeromech", "artifacts", "figures")
         if os.path.isdir(figdir):
+            tmin = str((c.get("qa") or {}).get("tables_min", 15))
             chain.append(("figure_table", [py, os.path.join(SCRIPTS, "figure_table_qa.py"),
                                            "--docx", abs_docx, "--pdf", abs_pdf,
-                                           "--figdir", figdir, "--out", qa_out], pdf_ok))
+                                           "--figdir", figdir, "--tables-min", tmin,
+                                           "--out", qa_out], pdf_ok))
             chain.append(("graph_quality", [py, os.path.join(SCRIPTS, "graph_quality_qa.py"),
                                             "--docx", abs_docx, "--pdf", abs_pdf,
                                             "--figdir", figdir, "--out", qa_out], pdf_ok))
