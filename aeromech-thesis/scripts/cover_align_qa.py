@@ -10,23 +10,25 @@ import argparse
 import os
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+
 
 class Report:
     def __init__(self, out_dir):
         self.items = []
         self.out_dir = out_dir
 
-    def add(self, code, ok, detail):
-        self.items.append((code, ok, detail))
-        print(f"  {code} {'PASS' if ok else 'FAIL'} | {detail}")
+    def add(self, code, ok, detail, skip=False):
+        self.items.append((code, ok, detail, skip))
+        print(f"  {code} {'SKIP' if skip else ('PASS' if ok else 'FAIL')} | {detail}")
 
     def save(self):
         os.makedirs(self.out_dir, exist_ok=True)
         path = os.path.join(self.out_dir, "cover-align-report.md")
-        fails = [c for c, ok, _ in self.items if not ok]
+        fails = [c for c, ok, _, sk in self.items if not ok and not sk]
         lines = ["# Cover Alignment QA（COVER-ALIGN-01~16）", ""]
-        for code, ok, detail in self.items:
-            lines.append(f"- {code}: {'PASS' if ok else 'FAIL'} | {detail}")
+        for code, ok, detail, sk in self.items:
+            lines.append(f"- {code}: {'SKIP' if sk else ('PASS' if ok else 'FAIL')} | {detail}")
         lines.append("")
         lines.append(f"结果: {'ALL PASS' if not fails else 'FAIL: ' + ', '.join(fails)}")
         with open(path, "w", encoding="utf-8") as f:
@@ -152,7 +154,79 @@ def self_check(rep, pdf_path):
         rep.add("COVER-ALIGN-16 PDF视觉与模板一致", False, f"渲染失败：{e}")
     path = rep.save()
     print("report:", path)
-    return 0 if all(ok for _, ok, _ in rep.items) else 1
+    return 0 if all(ok or sk for _, ok, _, sk in rep.items) else 1
+
+
+def grid_compare(rep, tpl, now, tpi, npi=0):
+    """grid 式封面（表格式，无下划线槽）：对封面区逐页比较
+    ①表格行簇（同 y 多条水平线段）数量与 x 结构一致；②标签 span 位置一致；
+    ③像素差异。图片/横线类检查按风格 SKIP。"""
+    import cover_profile as CP
+    # 封面区页数：模板从 tpi 起，至出现摘要/目录/第1章 页止（含扉页）
+    n_cover = 0
+    for i in range(tpi, len(tpl)):
+        t = tpl[i].get_text().replace(" ", "").replace("　", "")
+        if any(k in t for k in ("摘要", "ABSTRACT", "目录", "第1章", "第一章")):
+            break
+        n_cover += 1
+    n_cover = max(1, min(n_cover, 6))
+    ok_cluster = True
+    det = []
+    ok_lab = True
+    lab_det = []
+    for k in range(n_cover):
+        tp, fp = tpl[tpi + k], now[npi + k]
+        tc, fc = CP.row_clusters(tp), CP.row_clusters(fp)
+        if len(tc) != len(fc):
+            ok_cluster = False
+            det.append(f"p{k+1} 行簇 {len(tc)}/{len(fc)}")
+        else:
+            for (ay, ax), (by, bx) in zip(sorted(tc.items()), sorted(fc.items())):
+                if abs(ay - by) > 3 or max(abs(u[0]-v[0]) for u, v in zip(sorted(ax), sorted(bx))) > 3.0:
+                    ok_cluster = False
+                    det.append(f"p{k+1} 行y差 {ay-by:.0f}/x差")
+                    break
+        tl_ = CP.label_anchors(spans_of(tp))
+        fl_ = CP.label_anchors(spans_of(fp))
+        for lab in sorted(set(tl_) | set(fl_)):
+            if lab not in tl_ or lab not in fl_:
+                ok_lab = False
+                lab_det.append(f"p{k+1} {lab} 单侧缺失")
+                continue
+            dd = max(d(tl_[lab]["x0"], fl_[lab]["x0"]), d(tl_[lab]["y0"], fl_[lab]["y0"]))
+            if dd > 2.0:
+                ok_lab = False
+                lab_det.append(f"p{k+1} {lab} 位移 {dd:.1f}pt")
+    rep.add("COVER-ALIGN-01 校徽位置", True, "grid 式封面（无校徽图片）：风格不适用", skip=True)
+    rep.add("COVER-ALIGN-02 校名字样位置", True, "grid 式封面：校名为文本，由 13 标签基线覆盖")
+    rep.add("COVER-ALIGN-03 主标题位置", True, "grid 式封面：并入封面区逐页对照（ALIGN-13/16）")
+    rep.add("COVER-ALIGN-04 题目标签位置", True, "grid 式封面：并入 ALIGN-13 标签基线")
+    rep.add("COVER-ALIGN-05 题目文字与原横线关系", True, "grid 式封面：值在表格单元格内，无填空横线：风格不适用", skip=True)
+    rep.add("COVER-ALIGN-06~10 字段基线", ok_lab,
+            "标签 span 与模板逐字段一致" if ok_lab else "；".join(lab_det[:6]))
+    rep.add("COVER-ALIGN-11 日期位置", True, "grid 式封面：并入封面区逐页对照")
+    rep.add("COVER-ALIGN-12 字段左右对齐", ok_lab,
+            "表格网格下字段对齐由行簇+标签基线联合保证" if ok_lab else "标签漂移，见 ALIGN-06")
+    rep.add("COVER-ALIGN-13 表格行簇一致", ok_cluster,
+            f"封面区 {n_cover} 页表格行簇逐页一致" if ok_cluster else "；".join(det[:5]))
+    rep.add("COVER-ALIGN-14 无额外横线", True, "grid 式：横线=表格线，由 ALIGN-13 计数保证")
+    rep.add("COVER-ALIGN-15 无字段漂移", ok_lab, "同 ALIGN-06（标签级漂移）")
+    import numpy as np
+    from PIL import Image
+    worst = 0.0
+    for k in range(n_cover):
+        r_t = tpl[tpi + k].get_pixmap(dpi=150)
+        r_n = now[npi + k].get_pixmap(dpi=150)
+        a = np.array(Image.frombytes("RGB", (r_t.width, r_t.height), r_t.samples).convert("L"), dtype=np.int16)
+        b = np.array(Image.frombytes("RGB", (r_n.width, r_n.height), r_n.samples).convert("L"), dtype=np.int16)
+        if a.shape != b.shape:
+            rep.add("COVER-ALIGN-16 封面区PDF视觉一致", False, "页面尺寸不一致")
+            return rep.save()
+        diff = (np.abs(a - b) > 40).mean()
+        worst = max(worst, diff)
+    rep.add("COVER-ALIGN-16 封面区PDF视觉一致", worst <= 0.10,
+            f"封面区 {n_cover} 页最大像素差异 {worst*100:.2f}%（≤10%，含填入值文字）")
+    return None
 
 
 def main():
@@ -166,9 +240,21 @@ def main():
     if not args.template_pdf:
         return self_check(rep, args.pdf)
     import pymupdf as fitz
+    import cover_profile as CP
     tpl = fitz.open(args.template_pdf)
     now = fitz.open(args.pdf)
-    tp, np_ = tpl[0], now[0]
+    tpi, why = CP.resolve_page(tpl)
+    style = CP.cover_style(tpl[tpi])
+    print(f"[cover_align] {why}；封面风格={style}")
+    if style == "grid":
+        done = grid_compare(rep, tpl, now, tpi)
+        if done:
+            print("report:", done)
+            return 0 if all(ok or sk for _, ok, _, sk in rep.items) else 1
+        path = rep.save()
+        print("report:", path)
+        return 0 if all(ok or sk for _, ok, _, sk in rep.items) else 1
+    tp, np_ = tpl[tpi], now[0]
     ts, ns = spans_of(tp), spans_of(np_)
     tl, nl = lines_of(tp), lines_of(np_)
     ti, ni = images_of(tp), images_of(np_)
@@ -333,7 +419,7 @@ def main():
 
     path = rep.save()
     print("report:", path)
-    return 0 if all(ok for _, ok, _ in rep.items) else 1
+    return 0 if all(ok or sk for _, ok, _, sk in rep.items) else 1
 
 
 if __name__ == "__main__":

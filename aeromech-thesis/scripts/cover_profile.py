@@ -81,3 +81,46 @@ def underline_rows(page):
         if r.height < 2.5 and r.width > 30:
             out.append((round(r.x0, 1), round(r.x1, 1), round(r.y0, 1)))
     return sorted(out, key=lambda z: z[2])
+
+
+def row_clusters(page, min_segs=2, ytol=3.0):
+    """同一 y（±ytol）多条水平线段聚为"行"（表格式封面的单元格底线行）。
+    返回 {y: [(x0,x1), …]}（按 y 排序）。"""
+    segs = []
+    for dr in page.get_drawings():
+        r = dr["rect"]
+        if r.height < 2.5 and r.width > 20:
+            segs.append((round(r.y0, 1), round(r.x0, 1), round(r.x1, 1)))
+    clusters = {}
+    for y, x0, x1 in sorted(segs):
+        key = next((k for k in clusters if abs(k - y) <= ytol), y)
+        clusters.setdefault(key, []).append((x0, x1))
+    return {k: v for k, v in sorted(clusters.items()) if len(v) >= min_segs}
+
+
+def cover_style(page):
+    """images：有校徽类图片（原 BUG-021 学校封面）；grid：无图片但有多行表格线；
+    否则 lines（文字式/下划线式）。"""
+    p = profile(page)
+    if p["style"] == "lines" and p["emblems"]:
+        return "images"
+    if row_clusters(page):
+        return "grid"
+    return p["style"] if p.get("emblems") else "lines"
+
+
+def label_anchors(spans):
+    """从页面 span 列表提取字段标签锚：文本（去空白后）以冒号收尾且含字段关键词
+    （"姓名："→锚；班级值"专业XX班"不以冒号结尾→不误判）。返回 {label: span}。"""
+    out = {}
+    for s in spans:
+        t = s["t"].replace(" ", "").replace("　", "")
+        if not (t.endswith(":") or t.endswith("：")):
+            continue
+        for lab in LABEL_TOKENS:
+            if lab in t:
+                cur = out.get(lab)
+                if cur is None or s["x0"] < cur["x0"]:
+                    out[lab] = s
+                break
+    return out
