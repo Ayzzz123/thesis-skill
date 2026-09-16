@@ -122,6 +122,31 @@ def run(template_path, docx_path, pdf_path, out_dir, body_size, body_line,
             if not (tb.startswith(ta) or ta in tb):
                 vis_ok = False
         ck("TF-03 封面视觉层级一致", vis_ok, "模板各段文本在成品中保留（层级/字体由母版继承）")
+    elif (not no_template and len(td.tables) > 0 and len(fd.tables) > 0
+          and (len(td.tables[0].rows), len(td.tables[0].columns))
+          == (len(fd.tables[0].rows), len(fd.tables[0].columns))
+          and td.tables[0].cell(0, 0).text.strip()[:6]
+          == fd.tables[0].cell(0, 0).text.strip()[:6]):
+        # v1.6 test-8.0 表格式（grid）封面母版：首表行列一致+标签集保留即结构一致；
+        # 填入值替换示例占位属预期（不要求逐字一致）。
+        def cell_labels(t):
+            out = []
+            for r in t.rows:
+                for c in r.cells:
+                    txt = c.text.strip()
+                    if txt.endswith("：") or txt.endswith(":"):
+                        out.append(txt)
+            return set(out)
+        tl0, fl0 = cell_labels(td.tables[0]), cell_labels(fd.tables[0])
+        same_rc = (len(td.tables[0].rows), len(td.tables[0].columns)) == \
+                  (len(fd.tables[0].rows), len(fd.tables[0].columns))
+        ck("TF-01 封面结构一致（grid 母版）", same_rc and len(fd.tables) >= 1,
+           f"首表行列 {len(fd.tables[0].rows)}x{len(fd.tables[0].columns)} 与母版一致；表数 母版{len(td.tables)}/成品{len(fd.tables)}")
+        ck("TF-02 封面字段一致（grid 母版）", tl0 <= fl0,
+           f"母版标签 {len(tl0)} 项在成品保留 {len(tl0 & fl0)}（缺失应保留空槽，不得虚构）"
+           + (f"；丢: {sorted(tl0 - fl0)[:4]}" if tl0 - fl0 else ""))
+        ck("TF-03 封面视觉层级（grid 母版）", True,
+           "grid 封面视觉层级由 cover_align 行簇/标签基线+TF-20 渲染页承担", skip=True)
     else:
         # 无封面母版（规范驱动重建）：TF-01~03 转为成品封面自检
         tokens = cover_tokens or ["本科生毕业论文"]
@@ -233,9 +258,35 @@ def run(template_path, docx_path, pdf_path, out_dir, body_size, body_line,
        f"表题数={len(tabcaps)}（表上方；md 题注不得因空行丢失）")
     three_ok = True
     bad_tbl = []
+    # v1.6 test-8.0：表题邻近性区分数据表与封面表单表——数据表上方紧邻"表X-Y"题注；
+    # 表单表（label-value 网格，表格式封面）不核三线表（其边框是学校封面设计）。
+    _cap_paras = [(p.text.strip(), p._p) for p in fd.paragraphs]
+
+    def _preceding_caption(tbl_el):
+        els = list(fd.element.body.iterchildren())
+        try:
+            k = els.index(tbl_el)
+        except ValueError:
+            return False
+        seen = 0
+        for j in range(k - 1, -1, -1):
+            if els[j].tag != qn("w:p"):
+                continue
+            t = "".join(x.text or "" for x in els[j].iter(qn("w:t"))).strip()
+            if not t:
+                continue
+            if re.match(r"^表(\d+[.\-]\d+|[A-Z][.\-]?\d+)", t):
+                return True
+            seen += 1
+            if seen >= 3:
+                return False
+        return False
+
     for ti, tb in enumerate(fd.tables[1:]):
         if len(tb.rows) == 1 and len(tb.columns) == 1:
-            continue  # 封面表/图块（1x1）不做三线表判定
+            continue  # 图块（1x1）不做三线表判定
+        if not _preceding_caption(tb._tbl):
+            continue  # 无表题=表单/封面结构表
         borders = tb._tbl.tblPr.find(qn("w:tblBorders"))
         has_tbl_top = has_tbl_bot = False
         has_inside = False
@@ -424,32 +475,54 @@ def run(template_path, docx_path, pdf_path, out_dir, body_size, body_line,
                         return pg
                 return None
 
-            names = [("封面", ["本科生毕业论文"]), ("声明", ["原创性声明"]),
-                     ("中文摘要", ["关键词"]), ("ABSTRACT", ["KEY", "WORDS"]),
-                     ("目录", ["目", "录"]), ("正文样例", ["绪论"]),
-                     ("参考文献样例", ["参考文献"]), ("附录样例", ["附录A"]),
-                     ("致谢样例", ["致谢"])]
-            for name, pats in names:
-                tp = page_of(td_, pats, dots_ok=(name == "目录"))
-                fp = page_of(fpdf, pats, dots_ok=(name == "目录"))
-                if tp is None or fp is None:
+            def any_page(doc, alts, need_dots=False):
+                """v1.6 test-8.0：token 备选集定位（各校长措辞不同：毕业设计/毕业论文/
+                学位论文…）；命中任一条即返回。need_dots=目录页（点线引导符）。"""
+                for pg in range(doc.page_count):
+                    raw = doc[pg].get_text()
+                    if need_dots != ("...." in raw):
+                        continue
+                    t = raw.replace(" ", "").replace("\u3000", "")
+                    if any(a.replace(" ", "") in t for a in alts):
+                        return pg
+                return None
+
+            cov_alts = list(cover_tokens) if cover_tokens else \
+                ["毕业设计", "毕业论文", "学位论文", "本科论文"]
+            names = [("封面", cov_alts, False), ("中文摘要", ["关键词"], False),
+                     ("ABSTRACT", ["KEYWORDS"], False), ("目录", ["目录"], True),
+                     ("正文样例", ["第1章", "第一章"], False),
+                     ("参考文献样例", ["参考文献"], False),
+                     ("附录样例", ["附录A", "附录"], False),
+                     ("致谢样例", ["致谢"], False)]
+            n_rendered = 0
+            for name, alts, nd in names:
+                fp = any_page(fpdf, alts, need_dots=nd)
+                tp = any_page(td_, alts, need_dots=nd)
+                if fp is None:
                     continue
                 try:
                     from PIL import Image
-                    a = td_[tp].get_pixmap(dpi=80)
                     b = fpdf[fp].get_pixmap(dpi=80)
-                    ia = Image.frombytes("RGB", (a.width, a.height), a.samples)
                     ib = Image.frombytes("RGB", (b.width, b.height), b.samples)
-                    w = max(ia.width, ib.width)
-                    im = Image.new("RGB", (w, ia.height + ib.height + 12), "white")
-                    im.paste(ia, (0, 0)); im.paste(ib, (0, ia.height + 12))
+                    if tp is not None:
+                        a = td_[tp].get_pixmap(dpi=80)
+                        ia = Image.frombytes("RGB", (a.width, a.height), a.samples)
+                        w = max(ia.width, ib.width)
+                        im = Image.new("RGB", (w, ia.height + ib.height + 12), "white")
+                        im.paste(ia, (0, 0)); im.paste(ib, (0, ia.height + 12))
+                    else:
+                        im = ib
+                    os.makedirs(out_dir, exist_ok=True)
                     im.save(os.path.join(out_dir, f"pair_{name}.png"))
-                    pairs.append((name, tp + 1, fp + 1))
+                    pairs.append((name, (tp + 1) if tp is not None else "-", fp + 1))
+                    n_rendered += 1
                 except Exception:
-                    pairs.append((name, tp + 1, fp + 1))
+                    pairs.append((name, (tp + 1) if tp is not None else "-", fp + 1))
+                    n_rendered += 1
             td_.close(); fpdf.close()
-            ck("TF-20 PDF视觉对照", len(pairs) >= 5,
-               f"页对={pairs}（pair_*.png 供人工复核）")
+            ck("TF-20 PDF视觉对照", n_rendered >= 5,
+               f"关键页渲染/对照 {n_rendered} 页={pairs}（pair_*.png 供人工复核；母版无对应页时单侧渲染）")
     elif pairs is not None:
         ck("TF-20 PDF视觉对照", True, "未提供 PDF，视觉对照 SKIP", skip=True)
 

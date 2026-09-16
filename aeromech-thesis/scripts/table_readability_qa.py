@@ -139,6 +139,8 @@ def collect_tables(doc, omap, els):
             j -= 1
             steps += 1
         m = re.match(r"^表(\d+[.\-]\d+)", cap_cn) or re.match(r"^表([A-Z][.\-]?\d+)", cap_cn)
+        if not cap_cn:
+            continue  # v1.6 test-8.0：无表题=表单/封面结构表，不按数据表核可读性
         key = m.group(1).replace(".", "-") if m else (cap_cn[:6] or f"#{i}")
         hdr_cells = [cell_text(tc) for tc in rows[0].findall(qn("w:tc"))]
         sig = nz(hdr_cells[0]) + (nz(hdr_cells[1]) if len(hdr_cells) > 1 else "")

@@ -50,6 +50,26 @@ def select_docx_mode(school_dir):
     return MODE_FORMAT_RECONSTRUCTION, None
 
 
+CAP_TAB_RE = re.compile(r"^表\s*(\d+)[.\-－—](\d+)|^表\s*([A-Z])[.\-－—]?(\d+)")
+
+
+def is_data_table(preceding_texts):
+    """v1.6 test-8.0 通用判定：论文数据表 = 表上方紧邻存在中文表题（表X-Y / 表A-B，
+    其下可有英文题 Tab. 行）。封面/扉页/声明/任务书等**表单表**（label-value 网格）
+    无表题，不得按数据表核三线表/列宽/题注（表格式封面母版把表单当数据表=全线误判）。
+    preceding_texts: 该表之前若干段文本（文档序倒序：第一段=离表最近）。"""
+    for t in preceding_texts[:6]:
+        s = (t or "").strip()
+        if not s:
+            continue
+        if CAP_TAB_RE.match(s):
+            return True
+        if s.startswith("Tab."):
+            continue  # 英文题注行：跳过，继续找中文题
+        return False  # 其它任何非空文本先于题注 → 非数据表
+    return False
+
+
 def detect_legacy_docs(school_dir):
     """检测 school_dir 下 Word 97-2003 旧格式 .doc 材料（按魔数校验 OLE2）。
     返回文件路径列表。调用方随后应：

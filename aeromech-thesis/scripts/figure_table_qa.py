@@ -133,6 +133,10 @@ def collect(docx_path):
                         break
                 j -= 1
                 steps += 1
+            # v1.6 test-8.0：无紧邻中文表题的多列表 = 表单/封面结构表（表格式封面母版），
+            # 不按数据表核题注/三线表/列宽（否则封面对象全线误判）
+            if not cap_cn:
+                continue
             tbls.append({"rows": len(rows), "cols": ncol, "widths": widths,
                          "cap_cn": cap_cn, "cap_en": cap_en, "idx": i, "el": el})
     return figs, tbls

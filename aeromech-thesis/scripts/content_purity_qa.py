@@ -28,6 +28,29 @@ def cap_match(s, rex):
     return f"{m.group(3)}-{m.group(4)}"
 
 
+def _body_start_index(d, els):
+    """首个 Heading 1 段落的 body 索引（样式名解析，styleId 可能为数字如 '1'）。
+    无→None（全文按正文区处理，v1.5 行为）。"""
+    h1_ids = set()
+    for s in d.styles:
+        try:
+            if s.name and re.fullmatch(r"Heading 1|标题 1|heading ?1", s.name):
+                h1_ids.add(s.style_id)
+        except Exception:
+            continue
+    if not h1_ids:
+        return None
+    for i, el in enumerate(els):
+        if el.tag != qn("w:p"):
+            continue
+        pPr = el.find(qn("w:pPr"))
+        ps = pPr.find(qn("w:pStyle")) if pPr is not None else None
+        v = ps.get(qn("w:val")) if ps is not None else None
+        if v is not None and v in h1_ids:
+            return i
+    return None
+
+
 class Report:
     def __init__(self, out_dir):
         self.items = []
@@ -246,9 +269,14 @@ def main():
                      "first": nz(first_row)[:14], "last": nz(last_row)[:14]})
 
     # TABCAP-07 图表题注顺序正确：表题在表上方 + 图题在图下方 + 编号单调递增
+    # v1.6 test-8.0：首个 Heading 1 之前 = 前置区（封面/扉页表单表），不参与题注顺序判定；
+    # 正文区内维持原要求（数据表必须题注在上）。
+    bs = _body_start_index(d, els)
     order_ok, order_d = True, []
     for i, el in enumerate(els):
         if el.tag != qn("w:tbl") or "w:drawing" in el.xml:
+            continue
+        if bs is not None and i < bs:
             continue
         rows = el.findall(qn("w:tr"))
         if len(rows) < 2 or len(rows[0].findall(qn("w:tc"))) < 2:

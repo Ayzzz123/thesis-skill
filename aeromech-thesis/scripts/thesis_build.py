@@ -462,6 +462,11 @@ def _append_content(root, doc, c, v, cap_map, en_map, figdir, roman_front,
     sec = TF.add_section_continue(doc, fmt="decimal") if roman_front else doc.add_section()
     if roman_front:
         TF.set_pgnum(doc.sections[-1], fmt="decimal", start=1)
+    # 页眉（学校规范：从正文开始；契约 school_format.header，
+    # 支持 {title}=论文题目插值；缺省不加页眉=按规范由 QA 判）
+    hdr = ((c.get("school_format") or {}).get("header") or "").strip()
+    if hdr:
+        TF.header_text(doc.sections[-1], hdr.replace("{title}", proj.get("title", "")))
     for f in content.get("chapters") or []:
         TF.parse_md(doc, _chapter_md(root, f), fig_dir=figdir,
                     cap_map=cap_map or None, en_map=en_map or None,
