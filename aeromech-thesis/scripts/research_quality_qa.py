@@ -139,7 +139,10 @@ _NUM_RE = re.compile(
 
 
 def numbers_of(text):
-    """提取关键数值（含单位）；排除年份、无单位的 1~2 位短整数（小节号/序号）。"""
+    """提取关键数值（含单位）；排除年份、无单位的 1~2 位短整数（小节号/序号）。
+    v1.6 test-8.0：另排除标识符后缀——前一个字符为 '-' 或 '=' 的数字（E-008、M-001、
+    DS-001、CCAR-145、seed=20260915 等）是 ID 不是数据声称，计入分母会稀释
+    "重要数字可追溯率"这一指标的本意。"""
     out = set()
     for m in _NUM_RE.finditer(text or ""):
         num, unit = m.group(1), m.group(2)
@@ -147,6 +150,15 @@ def numbers_of(text):
             continue
         if "." not in num and len(num) <= 2 and not unit:
             continue
+        # 无单位纯小数（4.1、5.2、3.3.1）= 小节交叉引用，非数据声称
+        #（v1.6 test-8.0；带单位小数如 16.5cm/1.8次 仍计入）
+        if "." in num and not unit:
+            continue
+        prev = text[m.start() - 1] if m.start() > 0 else ""
+        if prev == "-":
+            continue  # ID 后缀：E-008 / M-001 / MC-1 / CCAR-145
+        if prev == "=" and m.start() > 1 and text[m.start() - 2].isascii() and text[m.start() - 2].isalpha():
+            continue  # 具名参数赋值：seed=20260915（区别于计算输出 "E1=162" 的数字左值）
         out.add(num + (unit or ""))
     return out
 
