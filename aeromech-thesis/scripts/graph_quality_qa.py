@@ -297,8 +297,12 @@ def check_pdf(rep, pdf_path, figs):
         canvas = canvas.resize((int(canvas.width * ratio), int(canvas.height * ratio)), Image.LANCZOS)
         canvas.save(os.path.join(pair_dir, f"pair_{key}.png"))
         n_pairs += 1
+    # GQ-15 人工视觉复核：v1.6.5 去自证——本项本质是人工步骤（before|after 对照图），
+    # 机器无法判定"好不好看"，不得恒 True。改为 SKIP：对照图仍输出供人复核，
+    # 但该项不计入自动 PASS（人工未复核≠通过）。
     rep.add("GQ-15 人工视觉复核", True,
-            f"对照图已输出（before|after，{n_pairs} 组）：{pair_dir}；人工目检：无重叠/无穿字/留白充分")
+            f"对照图已输出（before|after，{n_pairs} 组）：{pair_dir}；"
+            f"人工目检步骤，机器不判定其通过（SKIP→人复核）", skip=True)
     # GQ-16~20 统计图（chart 类）渲染级可读性
     n_chart = 0
     for key, f in figs.items():

@@ -22,7 +22,7 @@ FigureResult（输出）：figure_id, status, artifact, sha256, quality（checks
 研究真值仍在 v1.4 figures.yaml（本模块只读引用 + 生命周期日志，不改注册表写入路径）。
 
 默认 LocalProvider：
-  kind=mermaid → 复用 scripts/render_mermaid.py（mmdc→fallback，FIGURE_ERROR→REJECTED，不落占位图）
+  kind=mermaid → 复用 scripts/render_mermaid.py（仅 mmdc 真实渲染可 GENERATED；v1.6.5：假内容 fallback 已删除，FIGURE_ERROR→REJECTED 且清理残留文件，不落占位图）
   kind=script  → 项目内生成脚本（figkit/matplotlib），受控执行（同 v1.5 recompute 信任边界：
                  仅 sys.executable 跑项目根内相对 .py，无 shell，cwd=root，180s 超时）
   validate     → 复用 graph_quality_qa.check_graphs（单图几何检查，基于 figkit layout JSON）；
@@ -259,13 +259,19 @@ class LocalProvider(FigureProvider):
         ok, msg, _br, code = RM.render_with_mmdc(mmd, out, "transparent")
         if ok:
             return self._ok(root, fid, rel_out, out, reason="mermaid 渲染成功")
-        fb_ok, fb_msg = RM.generate_fallback_figure(out, spec.get("name", fid))
-        if fb_ok:
-            return self._ok(root, fid, rel_out, out, reason="mmdc 失败→matplotlib fallback 合格图（非占位）")
-        rec = record(root, fid, "REJECTED", artifact=rel_out,
-                     reason=f"FIGURE_ERROR：mmdc 与 fallback 均失败（{str(fb_msg)[:80]}）；"
-                            f"该图不得进入最终论文", provider=self.name)
-        return _result(fid, "REJECTED", rel_out, None, rec, reason="FIGURE_ERROR")
+        # v1.6.5（D2）：失败即失败。不生成任何可冒充真实模型的 fallback；
+        # mmdc 失败可能留下残缺文件——清理，防止半成品混进交付。
+        if os.path.isfile(out):
+            try:
+                os.remove(out)
+            except OSError:
+                pass
+        rec = record(root, fid, "REJECTED", artifact=None,
+                     reason=f"FIGURE_ERROR：mmdc 渲染失败（{code}；{str(msg)[:80]}）；"
+                            f"假内容 fallback 已废除（v1.6.5），该图需修复环境或改用"
+                            f"忠实源（figkit 脚本）重生成；不得进入最终论文",
+                     provider=self.name)
+        return _result(fid, "REJECTED", None, None, rec, reason="FIGURE_ERROR")
 
     def _gen_script(self, root, spec, out, rel_out):
         fid = spec.get("figure_id")
