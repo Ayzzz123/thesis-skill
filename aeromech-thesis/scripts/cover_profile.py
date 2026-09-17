@@ -124,3 +124,20 @@ def label_anchors(spans):
                     out[lab] = s
                 break
     return out
+
+
+def fill_targets(tpl_spans, lab_anchors, min_len=3):
+    """grid 式封面"填入值"检测：同 y 带（±8pt）内、位于标签右侧的最长文本 span
+    = 填入值（模板占位"XXXXXX"在成品中被替换为真实值）。
+    返回 [(label, tpl_span, fin_span)]——只收两侧都定位到的行。
+    通用规则（不硬编码学校字段名）：值文本与模板值不同（被填写）即为 fill 行。"""
+    out = []
+    for lab, s in lab_anchors.items():
+        cand_t = [x for x in tpl_spans
+                  if abs(x["y0"] - s["y0"]) <= 8 and x["x0"] > s["x1"] - 2
+                  and len(x["t"]) >= 1]
+        cand_f = [x for x in tpl_spans if False]  # placeholder, replaced by caller pair
+        if not cand_t:
+            continue
+        out.append((lab, max(cand_t, key=lambda z: len(z["t"]))))
+    return out

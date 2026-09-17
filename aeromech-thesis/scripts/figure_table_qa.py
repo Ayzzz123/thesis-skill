@@ -244,6 +244,23 @@ def check_figs(rep, figs, pdf_path, docx_path, fig_meta=None, figs_min=1):
             ok12 = False
         d12.append(f"{f['cap_cn'].split('　')[0].strip() if '　' in f['cap_cn'] else f['cap_cn'][:8]}={'有引用' if cited else '缺引用'}")
     rep.add("FIG-12 正文存在图引用", ok12, "；".join(d12))
+
+    # FIG-13 正文图引用均可解析（v1.6 test-8.0：反向检查——正文提到"如图X-Y"但
+    # 不存在该图题=孤儿引用/幻觉图号。FIG-12 只查"图被引用"，两者合起来才闭环）
+    known_keys = {fig_key_of(f["cap_cn"]) for f in figs}
+    ref_re = re.compile(r"(?:如|见图|见图版|参见)?\s*[（(]?\s*图\s*([0-9]+|[A-Z])\s*[.\-–—]\s*(\d+)")
+    dangling = []
+    for el in body_children(docx.Document(docx_path)):
+        if el.tag != qn("w:p"):
+            continue
+        t = re.sub(r"[\s\u3000]", "", para_text(el))
+        for m in re.finditer(r"(?:如|见|参见)图(\d+|[A-Z])[.\-–—](\d+)", t):
+            k = f"图{m.group(1)}{m.group(2)}"
+            if k not in known_keys:
+                dangling.append(k)
+    rep.add("FIG-13 正文图引用均能解析到图题", not dangling,
+            "全部 如图/见图 引用对应存在图题" if not dangling
+            else f"悬空引用: {sorted(set(dangling))[:5]}")
     return doc
 
 

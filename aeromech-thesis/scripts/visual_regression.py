@@ -42,6 +42,20 @@ def main():
 
     issues = []       # A 类候选（布局异常，需修复/人工复核）
     b_type = []       # B 类豁免（章节自然结束等）
+    # v1.6 test-8.0：前置区页（正文起页之前的全部页：封面/扉页/罗马码摘要目录）
+    # 不判低占用——短页属结构常态。正文起页=首个页脚含居中阿拉伯数字的页。
+    def _arabic_footer(pg):
+        page = doc[pg]
+        H, Wd = page.rect.height, page.rect.width
+        for bl in page.get_text("dict")["blocks"]:
+            for ln in bl.get("lines", []):
+                y0 = ln["bbox"][1]
+                if H - 74 < y0 < H - 50 and abs((ln["bbox"][0] + ln["bbox"][2]) / 2 - Wd / 2) < 9:
+                    if "".join(sp["text"] for sp in ln["spans"]).strip().isdigit():
+                        return True
+        return False
+    body_first = next((pg for pg in range(N) if _arabic_footer(pg)), 0)
+    front_zone = set(range(body_first))
     print(f"=== 视觉回归: {N} 页 ===")
     for pg in range(N):
         page = doc[pg]
@@ -71,7 +85,10 @@ def main():
         if pg in EXEMPT and tag:
             tag += " (exempt)"
         # B 类判定：低占用页 → 若下一/后页为章节起始，判章节自然结束
-        if tag.startswith("LOW") and pg not in EXEMPT:
+        if tag.startswith("LOW") and pg in front_zone:
+            b_type.append((pg + 1, ratio))
+            tag += " [B类:前置区页]"
+        elif tag.startswith("LOW") and pg not in EXEMPT:
             if is_chapter_start_pg(pg + 1) or is_chapter_start_pg(pg):
                 b_type.append((pg + 1, ratio))
                 tag += " [B类:章节自然结束]"

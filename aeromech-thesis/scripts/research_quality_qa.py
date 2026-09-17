@@ -420,11 +420,42 @@ def _run_impl(root, out_dir=None, pdf=None, verbose=True):
         if synth_hits:
             bad10.append(f"正文出现{synth_hits}但数据为模拟")
             sev10 = "Critical"
+
+    # 文本级（v1.6 test-8.0 补，P3 类缺口）：模拟口径场景下正文句子的强断言词。
+    # 注册表级扫描只覆盖 claims/conclusions 字段，正文句子（如"本文证明了…"）
+    # 原本不受检——正文才是读者读到的东西。命中不自动 FAIL（否定语序/合法引用
+    # 模式无法靠词表区分），进人工复核队列；机器判不了不装懂，但也绝不静默。
+    NEG_RE2 = re.compile(r"(不|非|未|无|没有|禁止|不能|无法)")
+
+    def body_claim_hits(txt, words, win=16):
+        hits = []
+        for w in words:
+            start = 0
+            while True:
+                i = (txt or "").find(w, start)
+                if i < 0:
+                    break
+                pre = txt[max(0, i - win):i]
+                post = txt[i + len(w):i + len(w) + win]
+                if not (NEG_RE2.search(pre) or NEG_RE2.search(post)):
+                    hits.append(w)
+                    break
+                start = i + len(w)
+        return hits
+
+    body_hits = []
+    if simulated_only and (texts["chapters"].strip() or texts["conclusion"].strip()):
+        body_text = texts["chapters"] + "\n" + texts["conclusion"]
+        for group, words in (("CRIT", STRONG_PATTERNS_CRIT), ("HIGH", STRONG_PATTERNS_HIGH)):
+            h = body_claim_hits(body_text, words)
+            if h:
+                body_hits.append((group, h))
     if bad10:
         status10 = "FAIL"
         detail10 = "；".join(bad10[:4])
-    elif weak_targets:
-        # 启发式未命中强断言模式，但存在弱证据支撑的核心论断/结论：不得自动 PASS
+    elif weak_targets or body_hits:
+        # 启发式未命中强断言模式，但存在弱证据支撑的核心论断/结论或正文强断言词：
+        # 不得自动 PASS
         status10 = ST_NHR
         for kind, cid, text, sts, refs, alinks in weak_targets:
             review_items.append({
@@ -436,7 +467,24 @@ def _run_impl(root, out_dir=None, pdf=None, verbose=True):
                           "启发式未命中强断言模式，但其表述强度是否超出证据能力须人工判定",
                 "uncertainty": "强断言模式表覆盖有限（同义改写、隐含口径、放大表述可能漏检）",
             })
-        detail10 = f"自动检查未见越界模式；{len(weak_targets)} 项弱证据论断/结论待人工复核（见 human-review-checklist.md）"
+        for group, h in body_hits:
+            review_items.append({
+                "item": f"RQG-10:BODY-{group}", "check": "RQG-10",
+                "claim": "（正文强断言词）", "claim_text": "、".join(h)[:80],
+                "evidence": [f"{d.get('id')}({d.get('type')})" for d in datasets],
+                "reason": "全部数据集为模拟口径，正文出现"
+                          + ("强断言" if group == "HIGH" else "真实数据身份")
+                          + f"词 {h}（否定窗内未排除）：表述强度是否超出证据能力须人工判定",
+                "uncertainty": "窗口外否定/合法背景陈述可能命中；逐句人工核对语境",
+            })
+        dparts = []
+        if weak_targets:
+            dparts.append(f"{len(weak_targets)} 项弱证据论断/结论")
+        if body_hits:
+            dparts.append("正文强断言词待核（" + "；".join(
+                f"{'×'.join(h)}" for _, h in body_hits) + "）")
+        detail10 = "自动检查未见越界模式；" + "、".join(dparts) + \
+                   "待人工复核（见 human-review-checklist.md）"
     else:
         status10 = "PASS"
         detail10 = "未发现证据越界表述；核心论断证据无全弱风险"

@@ -41,15 +41,14 @@ def main():
 
     CN = {"1": "一", "2": "二", "3": "三", "4": "四", "5": "五", "6": "六"}
     body_start = None
-    # v1.6 test-8.0：正文起点=页首即"第X章"标题（剥页脚数字后）。旧实现"任意页文本
-    # 含第N章"会把提到"见第5章"的摘要页误判为正文起点（页码序列整体错位）。
-    head_re = re.compile(r"^(?:[IVXLCivxlcdm0-9]{1,4})?(?:第[0-9一二三四五六七八九十]{1,3}章)")
+    # v1.6 test-8.0：正文起点=存在"行首即第X章"的页（逐行判定）。旧实现按"任意页文本
+    # 含第N章"判定，会把提到"见第5章"的摘要页误判为正文起点（页码序列整体错位）。
     for pg in range(N):
         t = doc[pg].get_text()
         if "...." in t:
             continue  # 跳过目录页（含点线引导符）
-        tn = norm(t)
-        if head_re.match(tn):
+        if any(re.match(r"^第[0-9一二三四五六七八九十]{1,3}章", norm(l))
+               for l in t.split("\n")):
             body_start = pg
             break
     arabic_pg = 1

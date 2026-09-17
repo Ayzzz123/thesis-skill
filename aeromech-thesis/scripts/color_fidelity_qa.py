@@ -21,17 +21,17 @@ class Report:
         self.items = []
         self.out_dir = out_dir
 
-    def add(self, code, ok, detail):
-        self.items.append((code, ok, detail))
-        print(f"  {code} {'PASS' if ok else 'FAIL'} | {detail}")
+    def add(self, code, ok, detail, skip=False):
+        self.items.append((code, ok, detail, skip))
+        print(f"  {code} {'SKIP' if skip else ('PASS' if ok else 'FAIL')} | {detail}")
 
     def save(self):
         os.makedirs(self.out_dir, exist_ok=True)
         path = os.path.join(self.out_dir, "color-fidelity-report.md")
-        fails = [c for c, ok, _ in self.items if not ok]
+        fails = [c for c, ok, _, sk in self.items if not ok and not sk]
         lines = ["# Color Fidelity QA（COLOR-01~16）", ""]
-        for code, ok, detail in self.items:
-            lines.append(f"- {code}: {'PASS' if ok else 'FAIL'} | {detail}")
+        for code, ok, detail, sk in self.items:
+            lines.append(f"- {code}: {'SKIP' if sk else ('PASS' if ok else 'FAIL')} | {detail}")
         lines.append("")
         lines.append(f"结果: {'ALL PASS' if not fails else 'FAIL: ' + ', '.join(fails)}")
         with open(path, "w", encoding="utf-8") as f:
@@ -180,7 +180,7 @@ def self_check(rep, docx_path, pdf_path, out_dir):
         rep.add("COLOR-16 封面视觉颜色对照通过", False, "渲染失败：%s" % e)
     path = rep.save()
     print("report:", path)
-    return 0 if all(ok for _, ok, _ in rep.items) else 1
+    return 0 if all(ok or sk for _, ok, _, sk in rep.items) else 1
 
 
 def main():
@@ -198,6 +198,54 @@ def main():
     import pymupdf
     import numpy as np
     from PIL import Image
+
+    import cover_profile as CP
+    _tpi, _why = CP.resolve_page(pymupdf.open(args.template_pdf))
+    if CP.cover_style(pymupdf.open(args.template_pdf)[_tpi]) == "grid":
+        # grid（表格式）封面：无校徽/书法图片对象——图片链检查记风格 SKIP；
+        # 颜色保真按文本执行：封面大字号行 + 全文档文本 span 均须纯黑。
+        tpdf = pymupdf.open(args.template_pdf)
+        fpdf = pymupdf.open(args.pdf)
+        for code in ("01", "02", "03", "04", "08", "09", "10", "11", "12", "13", "14"):
+            rep.add(f"COLOR-{code} grid封面图片链检查", True, "表格式封面：无图片对象，风格不适用",
+                    skip=True)
+        def big_line_color(page):
+            best = (0.0, None)
+            for b in page.get_text("dict")["blocks"]:
+                for l in b.get("lines", []):
+                    for s in l["spans"]:
+                        if s["size"] >= 14 and (s["text"] or "").strip():
+                            if s["size"] > best[0]:
+                                best = (s["size"], s["color"])
+            return best[1]
+        tc = big_line_color(tpdf[_tpi])
+        nc = big_line_color(fpdf[0])
+        ok05 = tc == 0 and nc == 0
+        rep.add("COLOR-05 封面主文字颜色纯黑", ok05,
+                f"模板 0x{(tc or 0):06X} / 成品 0x{(nc or 0):06X}（≥14pt 最大行）")
+        tot = {}
+        for pi in range(len(fpdf)):
+            for c, n in span_colors(fpdf[pi]).items():
+                tot[c] = tot.get(c, 0) + n
+        ok06 = set(tot.keys()) <= {0}
+        rep.add("COLOR-06 普通正文颜色符合学校打印要求", ok06,
+                f"全 {len(fpdf)} 页文本 span 均纯黑（{sum(tot.values())} 字）" if ok06
+                else f"非黑文字: { {hex(k): v for k, v in tot.items() if k != 0} }")
+        rep.add("COLOR-07 封面颜色视觉对照", True,
+                "grid 封面视觉对照由 cover_align ALIGN-16 承担（像素级）", skip=True)
+        rep.add("COLOR-15 正文普通文字符合黑色打印要求", ok06, "同 COLOR-06")
+        try:
+            import os as _os
+            _os.makedirs(args.out, exist_ok=True)
+            pix = fpdf[0].get_pixmap(dpi=100)
+            pth = _os.path.join(args.out, "color_fidelity_grid_render.png")
+            pix.save(pth)
+            rep.add("COLOR-16 封面视觉颜色对照通过", True,
+                    f"成品封面渲染输出（人工复核）: {pth}")
+        except Exception as e:
+            rep.add("COLOR-16 封面视觉颜色对照通过", False, f"渲染失败：{e}")
+        rep.save()
+        return 0 if all(ok or sk for _, ok, _, sk in rep.items) else 1
 
     t_obj = cover_objects(args.template_docx)
     n_obj = cover_objects(args.docx)
@@ -252,8 +300,9 @@ def main():
     nc, nsz = big_title_color(fpdf)
     ok05 = tc == 0 and nc == 0
     rep.add("COLOR-05 主标题颜色与模板要求一致", ok05,
-            f"主标题文字颜色=纯黑（模板 0x{tc:06X} / 成品 0x{nc:06X}，字号 {nsz:.0f}pt）" if ok05
-            else f"模板 0x{tc:06X} 成品 0x{nc:06X}")
+            f"主标题文字颜色=纯黑（模板 0x{(tc or 0):06X} / 成品 0x{(nc or 0):06X}，字号 {tsz or 0:.0f}pt）"
+            if ok05 else f"模板 0x{(tc or 0):06X} 成品 0x{(nc or 0):06X}"
+            + ("（未定位主标题行）" if tc is None or nc is None else ""))
 
     # COLOR-06 普通正文颜色符合学校打印要求（全文档文本 span 均为纯黑）
     tot = {}
@@ -336,7 +385,7 @@ def main():
 
     path = rep.save()
     print("report:", path)
-    return 0 if all(ok for _, ok, _ in rep.items) else 1
+    return 0 if all(ok or sk for _, ok, _, sk in rep.items) else 1
 
 
 if __name__ == "__main__":

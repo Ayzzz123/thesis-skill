@@ -128,15 +128,15 @@ class Report:
         self.items = []
         self.out_dir = out_dir
 
-    def add(self, code, ok, detail):
-        self.items.append((code, ok, detail))
-        print(f"  {code} {'PASS' if ok else 'FAIL'} | {detail}")
+    def add(self, code, ok, detail, skip=False):
+        self.items.append((code, ok, detail, skip))
+        print(f"  {code} {'SKIP' if skip else ('PASS' if ok else 'FAIL')} | {detail}")
 
     def save(self, title="Cover Fidelity QA"):
         lines = [f"# {title}", ""]
-        fails = [c for c, ok, _ in self.items if not ok]
-        for code, ok, detail in self.items:
-            lines.append(f"- {code}: {'PASS' if ok else 'FAIL'} | {detail}")
+        fails = [c for c, ok, _, sk in self.items if not ok and not sk]
+        for code, ok, detail, sk in self.items:
+            lines.append(f"- {code}: {'SKIP' if sk else ('PASS' if ok else 'FAIL')} | {detail}")
         lines.append("")
         lines.append(f"结果: {'ALL PASS' if not fails else 'FAIL: ' + ', '.join(fails)}")
         path = os.path.join(self.out_dir, "cover-fidelity-report.md")
@@ -160,27 +160,70 @@ def run(tpl_docx, tpl_pdf, fin_docx, fin_pdf, out_dir):
         return 1
     t_xml, f_xml = t_tbl._tbl.xml, f_tbl._tbl.xml
     n_t_img, n_f_img = _drawing_count(t_xml), _drawing_count(f_xml)
-    rep.add("CF-02 图片数量一致", n_t_img == n_f_img and n_t_img >= 1,
-            f"模板封面图={n_t_img} 成品封面图={n_f_img}")
-    # CF-03/04：校徽与书法字样 = 封面 inline 图（≥2 张视为校徽+书法字样）
-    rep.add("CF-03 圆形校徽存在", n_t_img >= 1 and n_f_img >= 1,
-            f"封面图≥1（模板 {n_t_img}/成品 {n_f_img}）")
-    rep.add("CF-04 校名字样存在", n_t_img >= 2 and n_f_img >= 2,
-            f"封面图≥2 判定校徽+书法字样齐全（模板 {n_t_img}/成品 {n_f_img}）")
-    tc, fc = _cell_text(t_tbl), _cell_text(f_tbl)
+    # v1.6 test-8.0 通用化：图片类检查以"模板自身是否有封面图"为前提——
+    # 表格式封面（无校徽/书法图片）记 SKIP，不得拿另一所学校的图片要求来判。
+    if n_t_img == 0:
+        rep.add("CF-02 图片数量一致", True, "模板封面为表格式（无图片元素）：按风格 N/A", skip=True)
+        rep.add("CF-03 圆形校徽存在", True, "模板无校徽图片：风格不适用", skip=True)
+        rep.add("CF-04 校名字样存在", True, "模板校名为文字：并入 CF-05 字段保真", skip=True)
+    else:
+        rep.add("CF-02 图片数量一致", n_t_img == n_f_img and n_t_img >= 1,
+                f"模板封面图={n_t_img} 成品封面图={n_f_img}")
+        rep.add("CF-03 圆形校徽存在", n_t_img >= 1 and n_f_img >= 1,
+                f"封面图≥1（模板 {n_t_img}/成品 {n_f_img}）")
+        rep.add("CF-04 校名字样存在", n_t_img >= 2 and n_f_img >= 2,
+                f"封面图≥2 判定校徽+书法字样齐全（模板 {n_t_img}/成品 {n_f_img}）")
+
     def norm(s):
-        return s.replace(" ", "").replace("\u3000", "")
-    def has_date(t):
-        return ("年" in t) and ("月" in t) and ("日" in t)
-    for code, key in [("CF-05", "本科生毕业论文（设计）"),
-                      ("CF-06", "题    目"), ("CF-07", "姓    名"), ("CF-08", "学    号"),
-                      ("CF-09", "学    院"), ("CF-10", "专    业"),
-                      ("CF-11", "指导教师"), ("CF-12", "职称")]:
-        ok = norm(key) in norm(tc) and norm(key) in norm(fc)
-        rep.add(f"{code} {key.replace(chr(32), '')}字段存在", ok,
-                f"模板={'有' if norm(key) in norm(tc) else '无'} 成品={'有' if norm(key) in norm(fc) else '无'}")
-    rep.add("CF-13 日期字段存在", has_date(tc) and has_date(fc),
-            f"模板={'有' if has_date(tc) else '无'} 成品={'有' if has_date(fc) else '无'}（年/月/日）")
+        return s.replace(" ", "").replace("　", "").replace("\n", "")
+
+    def cover_labels(tbls):
+        out = set()
+        for t in tbls:
+            for r in t.rows:
+                for c in r.cells:
+                    txt = c.text.strip()
+                    if txt and (txt.endswith("：") or txt.endswith(":")):
+                        out.add(norm(txt))
+        return out
+
+    def cover_texts(doc_):
+        # 封面对象区=母版前 len(td.tables) 张表（构建保留封面表数量）
+        n = max(1, len(td.tables))
+        parts = []
+        for t in doc_.tables[:n]:
+            for r in t.rows:
+                for c in r.cells:
+                    parts.append(c.text)
+        for p in doc_.paragraphs[:40]:
+            parts.append(p.text)
+        return norm("\n".join(parts))
+
+    t_all, f_all = cover_texts(td), cover_texts(fd)
+    t_labels = cover_labels(td.tables)
+    # CF-05~：模板封面字段标签全部保留在成品封面（不硬编码任何学校的字段名）
+    missing = sorted(l for l in t_labels if l.rstrip("：:") not in f_all)
+    rep.add("CF-05 封面字段标签保真（母版驱动）", not missing,
+            f"母版 {len(t_labels)} 个标签字段全部保留" if not missing
+            else f"缺失 {len(missing)}/{len(t_labels)}: {missing[:5]}")
+    # CF-06 母版固定文本行（校名/标题行等长文本≥6字）在成品保留
+    fixed = sorted({norm(p.text) for tb in td.tables[:1] for row in tb.rows for c in row.cells
+                    for p in c.paragraphs if len(norm(p.text)) >= 4}
+                   | {norm(p.text) for p in td.paragraphs[:24] if len(norm(p.text)) >= 6})
+    t_fixed_missing = [x[:14] for x in fixed if x not in f_all]
+    # 填入值替换示例占位属预期：占位行（X 式）不计
+    t_fixed_missing = [x for x in t_fixed_missing
+                       if not re.search(r"X{2,}|xxxx", x)]
+    rep.add("CF-06 封面固定文本保真", not t_fixed_missing,
+            f"母版固定文本 {len(fixed)} 行逐行保留（值占位除外）" if not t_fixed_missing
+            else f"丢失 {len(t_fixed_missing)}: {t_fixed_missing[:4]}")
+    # CF-13 日期字段存在（模板有"年…月"才要求；日可有可无）
+    has_ym = lambda s: ("年" in s) and ("月" in s)
+    if has_ym(cover_texts(td)):
+        rep.add("CF-13 日期字段存在", has_ym(cover_texts(fd)),
+                "模板含年月行；成品年月行保留" if has_ym(cover_texts(fd)) else "成品缺年月行")
+    else:
+        rep.add("CF-13 日期字段存在", True, "模板封面无日期行：N/A", skip=True)
     # CF-14 表格结构
     def tbl_struct(tbl):
         tblPr = tbl._tbl.find(qn("w:tblPr"))
@@ -232,18 +275,32 @@ def run(tpl_docx, tpl_pdf, fin_docx, fin_pdf, out_dir):
             detail16.append("顶部/底部越界裁切")
     rep.add("CF-16 图片位置一致", ok16, "；".join(detail16) or "无图")
     rep.add("CF-17 图片尺寸一致", ok17, "逐图宽高差<1pt" if ok17 else "存在尺寸偏差")
-    # CF-18 关键文本行位置
-    key_lines = [("本科生毕业论文（设计）", "主标题行"),
-                 ("20", "日期行"), ("指导教师", "指导教师行")]
+    # CF-18 关键文本行位置（v1.6 test-8.0：从模板自身派生——封面页字号≥14pt 的
+    # 前 3 行固定文本（排除 X 占位行）；不再硬编码任何学校的标题/日期措辞）
+    _tpl_rows = []
+    for b in tp1.get_text("dict")["blocks"]:
+        for l in b.get("lines", []):
+            txt = "".join(s["text"] for s in l["spans"]).strip()
+            if not txt or re.search(r"[Xx]{2,}", txt):
+                continue
+            if max(s["size"] for s in l["spans"]) >= 14:
+                _tpl_rows.append(txt)
+    key_lines = []
+    for x in _tpl_rows:
+        if x[:12] not in [k[:12] for k in key_lines]:
+            key_lines.append(x[:12])
+        if len(key_lines) >= 3:
+            break
     deltas = []
-    for needle, label in key_lines:
+    for needle in key_lines:
         ty = _line_y(tp1, needle)
         fy = _line_y(fp1, needle)
         if ty is not None and fy is not None:
             deltas.append(abs(ty - fy))
     ok18 = bool(deltas) and max(deltas) < 6
     rep.add("CF-18 封面视觉布局一致", ok18,
-            f"关键行偏移 Δmax={max(deltas):.1f}pt（<6pt）" if deltas else "关键行未定位")
+            f"母版大字号行×{len(key_lines)} 偏移 Δmax={max(deltas):.1f}pt（<6pt）" if deltas
+            else "关键行未定位（母版无≥14pt固定文本行或成品不保留）")
     # CF-19 像素覆盖率：固定区（页面上部 45%：校徽/书法字样/主标题/题目标签）
     # 可变字段填写带（占位下划线被字段值替换属预期行为，不计入缺失判据）
     t_mask, f_mask = _page_fg_mask(tp1), _page_fg_mask(fp1)
@@ -331,8 +388,23 @@ def run(tpl_docx, tpl_pdf, fin_docx, fin_pdf, out_dir):
     rep.add("CF-24 封面文本框数量一致", txbx_count(t_xml) == txbx_count(f_xml),
             f"模板={txbx_count(t_xml)} 成品={txbx_count(f_xml)}")
     # CF-25 首屏全页视觉回归：全页覆盖 + 固定区 + 图像区域（校徽/书法缺失直接 FAIL）
+    # v1.6 test-8.0：全页覆盖带"模板占位值行"排除——模板中 X 式占位行（如 XXXXXX/张 X）
+    # 在成品中被真实值替换属预期行为，不得计入缺失；占位行位置从模板自身派生。
     import numpy as _np
-    full_ratio = (t_mask & f_mask).sum() / t_mask.sum() if t_mask.sum() else 1.0
+    S25 = 100 / 72.0
+    var_bands = []
+    for b in tp1.get_text("dict")["blocks"]:
+        for l in b.get("lines", []):
+            txt = "".join(s["text"] for s in l["spans"])
+            if re.search(r"[Xx]{2,}", txt):
+                var_bands.append(l["bbox"])
+    keep = _np.ones(t_mask.shape[:2], bool)
+    if var_bands:
+        for (x0, y0, x1, y1) in var_bands:
+            keep[max(0, int(y0 * S25) - 2):min(keep.shape[0], int(y1 * S25) + 3),
+                 max(0, int(x0 * S25) - 3):min(keep.shape[1], int(x1 * S25) + 3)] = False
+    tf25, ff25 = t_mask & keep, f_mask & keep
+    full_ratio = (tf25 & ff25).sum() / tf25.sum() if tf25.sum() else 1.0
     img_ok = len(t_imgs) == len(f_imgs)
     img_detail = []
     for k, (ti, fi) in enumerate(zip(t_imgs, f_imgs)):
@@ -351,7 +423,7 @@ def run(tpl_docx, tpl_pdf, fin_docx, fin_pdf, out_dir):
 
     path = rep.save()
     print("report:", path)
-    return 0 if all(ok for _, ok, _ in rep.items) else 1
+    return 0 if all(ok or sk for _, ok, _, sk in rep.items) else 1
 
 
 def self_check(rep, docx_path, pdf_path, out_dir):
@@ -409,7 +481,7 @@ def self_check(rep, docx_path, pdf_path, out_dir):
     rep.add("CF-25 首屏全页视觉回归", True, "自检：见 CF-20 渲染输出（人工复核）")
     path = rep.save("Cover Fidelity QA（无母版自检模式）")
     print("report:", path)
-    return 0 if all(ok for _, ok, _ in rep.items) else 1
+    return 0 if all(ok or sk for _, ok, _, sk in rep.items) else 1
 
 
 def main():

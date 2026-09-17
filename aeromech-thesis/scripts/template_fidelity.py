@@ -170,12 +170,36 @@ def footer_page_field(sec, size=9, cn="宋体"):
     E.set_font(run, cn, size)
 
 
-def header_text(sec, text, size=9, cn="宋体"):
+def header_text(sec, text, size=9, cn="宋体", doc=None):
+    """正文节页眉文字。v1.6 test-8.0：传入母版 Document 时套用其 "header" 段落样式
+    （许多学校模板的 header 样式自带下边框横线，如中飞院规范页眉线），样式缺失才
+    手设字号；不套用=页眉横线类 QA（HF-02~04）必然失败。"""
     sec.header.is_linked_to_previous = False
     p = sec.header.paragraphs[0]
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    applied = False
+    if doc is not None:
+        try:
+            from docx.enum.style import WD_STYLE_TYPE
+        except Exception:
+            WD_STYLE_TYPE = None
+        for s in doc.styles:
+            try:
+                nm = (s.name or "").strip().lower()
+                para_type = WD_STYLE_TYPE is None or s.type == WD_STYLE_TYPE.PARAGRAPH
+            except Exception:
+                continue
+            if nm in ("header", "页眉") and para_type:
+                try:
+                    p.style = s
+                    applied = True
+                except Exception:
+                    pass
+                break
     run = p.add_run(text)
-    E.set_font(run, cn, size)
+    if not applied:
+        E.set_font(run, cn, size)
+    return p
 
 
 def toc_field_para(doc):
@@ -556,14 +580,25 @@ def add_md_table(doc, rows, cap_cn=None, cap_en=None, font=10.5, usable=None):
     if cap_cn:
         caption_paras(doc, cap_cn, cap_en or "")
     header, data = rows[0], rows[1:]
+    # v1.6 test-8.0：列宽按"表头+全列数据"的最长内容加权（旧实现只看表头长度：
+    # 表头短但叙述内容长的列被压窄 → 一字一行/叙述列不足）。
+    def col_len(ci):
+        m = len(header[ci]) if ci < len(header) else 1
+        for r in data:
+            if ci < len(r):
+                m = max(m, min(len(r[ci]), 14))  # 数据长内容封顶，防个别长格吃掉全表
+        return m
+    lens = [max(1, col_len(ci)) for ci in range(len(header))]
     weights = []
-    for h in header:
-        if any(k in h for k in ("S", "O", "D", "RPN", "序号")):
-            weights.append(0.5)
-        elif len(h) >= 8:
+    for ci, ln in enumerate(lens):
+        if ln <= 4:
+            weights.append(0.6)
+        elif ln <= 8:
+            weights.append(1.0)
+        elif ln <= 12:
             weights.append(1.5)
         else:
-            weights.append(1.0)
+            weights.append(2.0)
     width_total = usable or (25.7 if usable == 0 else 16.5)
     if usable == 0:
         width_total = 25.7

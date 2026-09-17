@@ -34,6 +34,7 @@ pdf_text_identity(pdf)=逐页文本+内嵌图像 xref sha 归并。容器元数�
 """
 import argparse
 import datetime
+import glob
 import hashlib
 import json
 import os
@@ -466,7 +467,7 @@ def _append_content(root, doc, c, v, cap_map, en_map, figdir, roman_front,
     # 支持 {title}=论文题目插值；缺省不加页眉=按规范由 QA 判）
     hdr = ((c.get("school_format") or {}).get("header") or "").strip()
     if hdr:
-        TF.header_text(doc.sections[-1], hdr.replace("{title}", proj.get("title", "")))
+        TF.header_text(doc.sections[-1], hdr.replace("{title}", proj.get("title", "")), doc=doc)
     for f in content.get("chapters") or []:
         TF.parse_md(doc, _chapter_md(root, f), fig_dir=figdir,
                     cap_map=cap_map or None, en_map=en_map or None,
@@ -666,7 +667,9 @@ def pipeline(root, steps=None):
                        "--pdf", abs_pdf if pdf_ok else "none", "--out", qa_out], docx_ok),
             ("cover_fidelity", [py, os.path.join(SCRIPTS, "cover_fidelity.py"),
                                 "--template", tpl_abs or "none", "--docx", abs_docx,
-                                "--pdf", abs_pdf if pdf_ok else "none", "--out", qa_out],
+                                "--pdf", abs_pdf if pdf_ok else "none",
+                                *(["--template-pdf", tpl_pdf] if tpl_pdf else []),
+                                "--out", qa_out],
              docx_ok and bool(tpl_abs)),
             ("content_purity", [py, os.path.join(SCRIPTS, "content_purity_qa.py"),
                                 "--docx", abs_docx, "--pdf", abs_pdf if pdf_ok else "none",
@@ -697,7 +700,12 @@ def pipeline(root, steps=None):
                                    "--docx", abs_docx, "--pdf", abs_pdf,
                                    "--out", qa_out], docx_ok and pdf_ok),
         ]
+        # v1.6 test-8.0：layout JSON 可能在 figures/ 或其 final/ 子目录（figkit 双写）
         figdir = os.path.join(root, ".aeromech", "artifacts", "figures")
+        final_dir = os.path.join(figdir, "final")
+        if os.path.isdir(final_dir) and not glob.glob(os.path.join(figdir, "*.layout.json")) \
+                and glob.glob(os.path.join(final_dir, "*.layout.json")):
+            figdir = final_dir
         if os.path.isdir(figdir):
             tmin = str((c.get("qa") or {}).get("tables_min", 15))
             chain.append(("figure_table", [py, os.path.join(SCRIPTS, "figure_table_qa.py"),
