@@ -1,5 +1,60 @@
 # CHANGELOG — aeromech-thesis
 
+## v1.6.0 — Full-Stack Thesis Orchestration
+
+**状态：已发布（2026-09-17）。发布验证：Phase 0~5 实现+测试；Phase 6 = test-8.0 全栈冷启动（新校模板、四断点恢复实测、隐藏缺陷自查含 2 项 DETECTION FAILED 修复复验、人工复核 7/7、delivery_gate=PASS）；Phase 7 = RC 报告与版本升级 v1.5.0→v1.6.0。tests/v1_6 395 断言 + v1_4/v1_4_1/v1_5/test_a/test_b 全绿 + t30~t70 外部回归 + dev↔install IDENTICAL。**
+
+已完成（Phase 0~4，实现+测试；各 Phase 报告见仓库 .aeromech/artifacts/analysis/）：
+
+- Phase 0 审计：`v1.6-gap-analysis.md`（10 检查点逐项 + 目标→差距矩阵）+ `v1.6-implementation-plan.md`。
+- Phase 1 核心数据层：`scripts/thesis_state.py`（StateIO：state.md §3~§11 程序化迁移校验；
+  Checkpoint 工件 CK-XXX：stage/task/cursor/artifacts+sha256/registries 快照/qa_state/next_action；
+  resume 视图：from_start=false、成果完好性比对）；`material_ingestion.py`（scan/SHA256 去重/类型推断
+  注册/check——"不得重复读取"程序化；schema=state.md §16.1，type 枚举扩展 school_notice/task_book/proposal）；
+  `school_requirements.py`（模板 docx 结构字段机械提取 + 逐字段 provenance∈official/sample/default/unknown；
+  样文永不冒充 official；PDF 规范不猜测；合并写 school-format.yaml additive `school_requirement`）。
+- Phase 2 上下文与调度：`research_context.py`（13 注册表只读聚合视图：RQ/objectives/methods/evidence/
+  data/analysis/claims/conclusions/scope/assumptions/limitations + coverage/validate/traceability 直接复用
+  引擎；OK/NOT_APPLICABLE/ERROR）；`stage_routing.py`（调度矩阵=MATRIX 数据；route() 只判定不执行；
+  门禁 item 级 v1.4.1 七态；交付五态 delivery_gate_status；回退映射表 CATEGORY_TARGET/ISSUE_TYPE_TARGET；
+  设计门禁 INFEASIBLE→blocked stay；证据缺=SKIPPED_WITH_REASON）。
+- Phase 3 Orchestrator：`thesis_orchestrator.py`（status/step/drive/resume/run-loop/apply-human/gate/actions；
+  Action 模型 JSONL 留痕禁止静默执行；RUN_PENDING 执行既有 AI 工具；迁移只经 thesis_state；
+  classify_recovery 五策略=issue_type+severity+v1.5 disposition+阶段映射共同决定（retry 上限 1/
+  REPAIR 复用白名单/ROLLBACK 经 StateIO+恢复前 checkpoint/HUMAN_REVIEW 双队列不代签/BLOCK Critical）；
+  drift_checks：STATE_DRIFT/REGISTRY_DRIFT/ARTIFACT_MISSING/ARTIFACT_CHANGED 不静默覆盖）。
+- Phase 4 交付层：`figure_iface.py`（FigureProvider 契约 plan/generate/validate + PROVIDERS 注册；
+  生命周期 PLANNED→GENERATED→VALIDATED→EMBEDDED→VERIFIED / REJECTED / NEEDS_HUMAN_REVIEW；
+  研究链接硬关卡（RQ/AN/CL）；LocalProvider 复用 render_mermaid/受控脚本执行/graph_quality_qa；
+  不复制协作者 Figure Engine）；`thesis_build.py`（build-contract.yaml 七域契约：required 缺=ERROR/
+  optional 缺=NOT_APPLICABLE 不补假数据；双模式组装走 docx_engine/template_fidelity；
+  pipeline 固定顺序 docx→toc→repaginate→pdf→finalize→qa 全调既有脚本、失败输出
+  {failed_stage,error_code,reason,suggested_action}；artifact-manifest.yaml sha256+content_identity
+  （排除 docProps/.rels 的内容身份 vs 容器哈希分离））；`delivery_gate.py`（聚合格式链 md 报告+pipeline
+  步骤+Document/manifest 一致性+Figure 生命周期+研究侧复用 routing+人工双队列 → 五态终局，
+  每项 {gate_id,domain,status,severity,evidence,reason,remediation}；缺证据=BLOCK；ERROR 不透 PASS；
+  总分不参与放行；旧项目域 N/A 不误伤）。
+- 测试：`tests/v1_6/`（Phase1~4 共 13 文件 317 断言；全部旧套件 v1_4 11/11、v1_4_1 5/5、v1_5 13/13
+  418 断言、test_a/test_b、t30~t70 外部回归持续绿；dev↔install IDENTICAL 规程维持）。
+- 本 Phase（5）文档收口：`references/orchestration.md` 规则总纲；SKILL.md §21/加载表/路由/§7/§16；
+  state.md §18 + schema additive（checkpoint 键、读取兼容 1.1）；delivery-pipeline.md §1 流程图更新 +
+  §8.4/§8.5；README v1.6 development/roadmap；`test_document_contract.py`（文档=代码=测试一致性锁）。
+
+- Phase 6 test-8.0 全栈冷启动（新材料/新题目：中国民用航空飞行学院官方模板 + GB/T 7713.1/7714；
+  S3/S5/S7/S9 四断点恢复实测全部 RESUMED；Template+Research+Loop+Figure+Build+Gate 联合触发；
+  交付物 delivery_gate=PASS；报告 `.aeromech/artifacts/qa/test-8.0-final-report.md`）。
+- Phase 7 发布：全回归复跑 + `v1.6-release-report.md` + RC PASS 判定 + 版本三联动升级
+  （SKILL/README/CHANGELOG v1.5.0→v1.6.0；test_document_contract 版本态断言同步翻转到发布态）。
+
+Test-8.0 期间发现并修复的根因缺陷（8 类，全部回归锁定，不针对单篇特例）：
+① parse_md 表体静默丢失（英文题注缺失时）；② 契约 tables 域未接通 + 图/表双语题注分流；
+③ 图生命周期误含 TABLE-* 条目；④ 封面填充/对照 QA 硬编码旧校口径（新增 cover_profile 风格画像
+images/grid/lines + 契约驱动 cover_fields/cover_tables/cover_text_fills）；⑤ QA 检测器硬编码章数/
+附录字母/目录窗口/正文起点（改为从文本派生）；⑥ Word COM 往返剥 w:sz/tblStyle（有效字号回退 +
+cover_restore 步骤）；⑦ 检测缺口：正文级强断言（RQG-10 正文 HIGH 词扫描→NHR）与悬空图引用
+（FIG-13→FAIL）——两项 DETECTION FAILED 如实记录后根因修复并复验；⑧ HTML 实体残留（通用
+unescape_text 接全部 DOCX 文本入口 + content_purity ENT-01 兜底）。
+
 ## v1.5.0 — Research Intelligence & Agent Loop
 
 **目标：在 v1.4.1 稳定基线之上新增研究智能层（发现→诊断→根因→修复→重分析→再验证闭环），只增不破：不改既有 RQG/QA 语义，旧项目（无 design/scope/repairs）全部 NOT_APPLICABLE / 不阻塞。**

@@ -83,13 +83,55 @@ def cell_text(tc):
 
 
 def cell_font_size(tc):
-    """单元格内首个含 sz 的 run 字号（pt），无则 None。"""
+    """单元格内首个含 sz 的 run 字号（pt），无则 None。
+    v1.6 test-8.0：Word COM 保存会把与样式默认等值的显式 w:sz 折叠掉
+    （update_toc/repaginate 往返实测）；None 时调用方应回退有效字号
+    （para_style_size/doc_default_size），不得按 0 判。"""
     for r_el in tc.iter(qn("w:r")):
         rPr = r_el.find(qn("w:rPr"))
         szel = rPr.find(qn("w:sz")) if rPr is not None else None
         if szel is not None:
             return int(szel.get(qn("w:val"))) / 2.0
     return None
+
+
+def doc_default_size(doc):
+    """styles.xml docDefaults/rPrDefault w:sz（half-points）→ pt；无则 10.5。"""
+    try:
+        root = doc.styles.element
+        for sz in root.iter(qn("w:sz")):
+            return int(sz.get(qn("w:val"))) / 2.0
+    except Exception:
+        pass
+    return 10.5
+
+
+def para_style_size(doc, p_el):
+    """段落 pStyle → 样式表字号；未定义则 None。"""
+    pPr = p_el.find(qn("w:pPr"))
+    ps = pPr.find(qn("w:pStyle")) if pPr is not None else None
+    v = ps.get(qn("w:val")) if ps is not None else None
+    if not v:
+        return None
+    for s in doc.styles.element.iter(qn("w:style")):
+        if s.get(qn("w:styleId")) == v:
+            for sz in s.iter(qn("w:sz")):
+                return int(sz.get(qn("w:val"))) / 2.0
+            return None
+    return None
+
+
+def cell_effective_size(doc, tc, fallback):
+    """显式 run sz → 段落样式 → fallback（Normal/docDefaults）。"""
+    v = cell_font_size(tc)
+    if v is not None:
+        return v
+    p_el = tc.find(qn("w:p"))
+    if p_el is not None:
+        v = para_style_size(doc, p_el)
+        if v is not None:
+            return v
+    return fallback
 
 
 def classify_cols(rows):
@@ -139,6 +181,8 @@ def collect_tables(doc, omap, els):
             j -= 1
             steps += 1
         m = re.match(r"^表(\d+[.\-]\d+)", cap_cn) or re.match(r"^表([A-Z][.\-]?\d+)", cap_cn)
+        if not cap_cn:
+            continue  # v1.6 test-8.0：无表题=表单/封面结构表，不按数据表核可读性
         key = m.group(1).replace(".", "-") if m else (cap_cn[:6] or f"#{i}")
         hdr_cells = [cell_text(tc) for tc in rows[0].findall(qn("w:tc"))]
         sig = nz(hdr_cells[0]) + (nz(hdr_cells[1]) if len(hdr_cells) > 1 else "")
@@ -150,9 +194,10 @@ def collect_tables(doc, omap, els):
             except Exception:
                 widths.append(-1)
         all_fs, min_fs = [], None
+        fallback = doc_default_size(doc)
         for ri in range(1, len(rows)):
             for tc in rows[ri].findall(qn("w:tc")):
-                v = cell_font_size(tc)
+                v = cell_effective_size(doc, tc, fallback)
                 if v is not None:
                     all_fs.append(v)
                     min_fs = v if min_fs is None else min(min_fs, v)

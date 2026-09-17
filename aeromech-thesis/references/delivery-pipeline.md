@@ -6,17 +6,16 @@
 
 ```
 S1–S7 研究/写作
-  → S8 Figure Generation（scripts/render_mermaid.py + 数据图）
+  → S8 Figure Generation（scripts/figure_iface.py：plan/generate/validate + 生命周期，
+     底层 render_mermaid.py + 数据图）
   → S9 QA（文本层）
-  → DOCX Assembly（scripts/build_docx.py，内容层由 Agent 依论文结构生成）
-  → PAGE_FLOW_OPTIMIZER（内置 docx 引擎）
-  → Visual Regression（scripts/visual_regression.py）
-  → TOC Update（scripts/update_toc.py，Word COM 两轮）
-  → PDF Export（scripts/export_pdf.py）
+  → 统一 Thesis Build（scripts/thesis_build.py pipeline：
+       docx（build-contract.yaml→双模式组装）→ toc → repaginate → pdf → finalize → qa 链）
+       ——或旧路径：项目层 build_docx_<project>.py（v1.6 前项目保留，不被接管）
   → PDF Structural QA（scripts/pdf_qa.py）
-  → PDF Visual QA（scripts/visual_regression.py --pdf）
-  → Delivery Gate（见 §7）
-  → 毕业论文.docx + 毕业论文.pdf
+  → PDF Visual QA（scripts/visual_regression.py）
+  → Delivery Gate（scripts/delivery_gate.py 全聚合，见 §7-§8）
+  → 毕业论文.docx + 毕业论文.pdf + artifacts/build/artifact-manifest.yaml
 ```
 
 S10 答辩能力独立，不受交付层影响。
@@ -144,6 +143,46 @@ DOCX ≠ 最终验收对象；**Final PDF 为交付真值**。DOCX 的分页、�
 - 终态 PASS / PASS_WITH_WARNINGS → 放行；WARN（medium 未解决）与 Low 在交付报告披露。
 - `research_quality_score.py` 8 维评分与 block 状态随交付报告输出；**总分不得作为放行依据**。
 - 旧项目（无 design/scope）：v1.5 工具输出 NOT_APPLICABLE / rc=2，不阻塞（兼容规则同 v1.4）。
+
+### 8.4 Unified Thesis Build 与 Artifact Manifest（v1.6）
+
+新项目（v1.6 起）经 `scripts/thesis_build.py` 统一构建，不再逐项目手写 builder：
+
+1. 输入=项目根 `.aeromech/build-contract.yaml`（project/content/research/school_format/figures/
+   tables(预留)/output/qa 七域，细则 `orchestration.md` §11）。缺失语义硬纪律：
+   **required 缺 → ERROR（列出全部缺项）；optional 缺 → NOT_APPLICABLE（交付报告如实披露）；
+   任何静默补假数据禁止**。无契约的旧项目 → 本域 NOT_APPLICABLE，其各自 builder 交付不受影响。
+2. 流水线固定顺序（全部调用既有脚本，本层只调度不重实现）：
+   `docx → toc → repaginate → pdf → finalize → qa`；
+   任一步失败 → 输出 **{failed_stage, error_code, reason, suggested_action}**，
+   后续步骤记 `SKIPPED_WITH_REASON` ——**不得继续假装交付成功**；
+   Word COM 步骤环境失败记 ERROR（环境码，非内容结论）。
+3. 双模式组装（v1.1.0 纪律不变）：`select_docx_mode` 判 TEMPLATE_FIDELITY / FORMAT_RECONSTRUCTION；
+   母版驱动保留封面、剪样例区、分节防页码重启；组装只走 docx_engine/template_fidelity 原语。
+4. `artifacts/build/artifact-manifest.yaml`：每产物 {artifact, path, sha256, content_identity,
+   producer, timestamp, status} + meta.steps。Resume/交付前以 sha256 复算核验；缺失/漂移 = 内容身份
+   不可信 → Delivery Gate document 域 critical FAIL。
+5. 图嵌入接线：章节 md 占位行（`（图X-Y …）`）+ 契约 figures 映射命中 + 图文件在场 →
+   figure 生命周期记 `EMBEDDED`（未命中不记录，不伪造）。
+
+### 8.5 Delivery Gate Aggregator 全聚合（v1.6）
+
+`scripts/delivery_gate.py` 是**最终统一门禁**（此前各 QA 各出报告由人工判读，v1.6 起程序聚合）：
+
+- 聚合域：格式 QA（tf_qa/cover/cover_align/cover_fill/color/page/figure_table/graph/table/
+  content_purity 的 md 报告）+ pipeline 步骤记录（pdf_qa/visual/toc/repaginate/pdf_export/finalize，
+  取自 manifest meta.steps）+ Document/PDF（交付物存在性+manifest 一致性）+ Figure 生命周期 +
+  Research QA（RQG/loop，复用 `stage_routing` 研究侧语义不重算）+ Evidence/Data（同经研究侧）+
+  Human Review（v1.4.1/v1.5 双队列未裁决数）。
+- 输出五项必带：`{gate_id, domain, status, severity, evidence(项目根相对路径), reason, remediation}`；
+  `--write` 落 `artifacts/qa/gate-summary.json` + `gate-report.md`。
+- 终局五态与优先级（`orchestration.md` §12/§13）：
+  `ERROR > Critical/High FAIL → BLOCK > NEEDS_HUMAN_REVIEW → PASS_WITH_HUMAN_REVIEW >
+   WARN → PASS_WITH_WARNINGS > PASS`。
+  硬规则：**任何 Critical/ERROR 不得伪装 PASS**；Research Quality Score 总分**不参与放行**
+  （总分不得掩盖 Critical）；**缺决定性证据 = BLOCK**（未执行≠通过）；
+  无模板 → 模板对照项按 tf_qa 自身 NOT_APPLICABLE（不伪造 PASS、不因此 BLOCK）；
+  旧项目无注册表/图计划/契约 → 对应域 NOT_APPLICABLE，交付域仍按旧路径报告核验。
 
 ## 9. 脚本工程要求
 

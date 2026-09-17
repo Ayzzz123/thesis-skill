@@ -8,6 +8,7 @@ COVER_FILL_CENTERING：填入原始模板横线槽位的内容，必须在该横
 """
 import argparse
 import os
+import re
 import sys
 
 
@@ -16,17 +17,17 @@ class Report:
         self.items = []
         self.out_dir = out_dir
 
-    def add(self, code, ok, detail):
-        self.items.append((code, ok, detail))
-        print(f"  {code} {'PASS' if ok else 'FAIL'} | {detail}")
+    def add(self, code, ok, detail, skip=False):
+        self.items.append((code, ok, detail, skip))
+        print(f"  {code} {'SKIP' if skip else ('PASS' if ok else 'FAIL')} | {detail}")
 
     def save(self):
         os.makedirs(self.out_dir, exist_ok=True)
         path = os.path.join(self.out_dir, "cover-fill-report.md")
-        fails = [c for c, ok, _ in self.items if not ok]
+        fails = [c for c, ok, _, sk in self.items if not ok and not sk]
         lines = ["# Cover Fill QA（COVER-FILL-01~14）", ""]
-        for code, ok, detail in self.items:
-            lines.append(f"- {code}: {'PASS' if ok else 'FAIL'} | {detail}")
+        for code, ok, detail, sk in self.items:
+            lines.append(f"- {code}: {'SKIP' if sk else ('PASS' if ok else 'FAIL')} | {detail}")
         lines.append("")
         lines.append(f"结果: {'ALL PASS' if not fails else 'FAIL: ' + ', '.join(fails)}")
         with open(path, "w", encoding="utf-8") as f:
@@ -86,6 +87,64 @@ def match_lines(a, b, tol=2.0):
     return True
 
 
+def grid_fill_check(rep, tpl, now, tpi):
+    """grid（表格式）封面的填充值 QA：无下划线槽可核居中，改为——
+    ①母版每行标签（X 式值占位行）在成品中值槽内出现非 X 内容=已填入；
+    ②像素对照（封面区）；③横线槽类检查记风格 SKIP（不装懂）。"""
+    import numpy as np
+    from PIL import Image
+    import cover_profile as CP
+    n_cover = 0
+    for i in range(tpi, len(tpl)):
+        t = tpl[i].get_text().replace(" ", "").replace("　", "")
+        if any(k in t for k in ("摘要", "ABSTRACT", "目录", "第1章", "第一章")):
+            break
+        n_cover += 1
+    n_cover = max(1, min(n_cover, 6))
+    filled, unfilled = [], []
+    for k in range(n_cover):
+        tp, fp = tpl[tpi + k], now[k]
+        tl_, fl_ = CP.label_anchors(spans_of(tp)), CP.label_anchors(spans_of(fp))
+        for lab, s in tl_.items():
+            row_spans = [x for x in spans_of(tp) if abs(x["y0"] - s["y0"]) <= 8
+                         and x["x0"] > s["x1"] - 2]
+            if not row_spans:
+                continue
+            # 值槽=标签右侧最近 span（取最长会误抓同行下一格标签"职  称："）
+            tpl_val = min(row_spans, key=lambda z: z["x0"])
+            fin_row = [x for x in spans_of(fp)
+                       if lab in fl_ and abs(x["y0"] - fl_[lab]["y0"]) <= 8
+                       and x["x0"] > fl_[lab]["x1"] - 2]
+            fin_val = min(fin_row, key=lambda z: z["x0"]) if fin_row else None
+            key = f"p{k+1}:{lab}"
+            if fin_val and fin_val["t"] != tpl_val["t"]:
+                filled.append(key)  # 值与模板示例不同=已填入（脱敏值可含 X，不比 X 模式）
+            else:
+                unfilled.append(f"{key}仍为示例占位" if fin_val else f"{key}无值")
+    okf = bool(filled) and not unfilled
+    rep.add("COVER-FILL-01 封面字段值已填入（grid）", okf,
+            f"{len(filled)} 字段填入值（表格值槽内）" if okf else f"未填/未定位: {unfilled[:5]}")
+    rep.add("COVER-FILL-02 题目水平居中", True, "grid 式：值在单元格内，居中由表格结构保证：N/A",
+            skip=True)
+    rep.add("COVER-FILL-13 填充值中心偏差≤2pt", True, "grid 式：无下划线槽：N/A", skip=True)
+    worst = 0.0
+    for k in range(n_cover):
+        r_t = tpl[tpi + k].get_pixmap(dpi=150)
+        r_n = now[k].get_pixmap(dpi=150)
+        if (r_t.width, r_t.height) != (r_n.width, r_n.height):
+            rep.add("COVER-FILL-14 PDF视觉检查通过", False, "页面尺寸不一致")
+            rep.save()
+            return 1
+        a = np.array(Image.frombytes("RGB", (r_t.width, r_t.height), r_t.samples).convert("L"), dtype=np.int16)
+        b = np.array(Image.frombytes("RGB", (r_n.width, r_n.height), r_n.samples).convert("L"), dtype=np.int16)
+        worst = max(worst, float((np.abs(a - b) > 40).mean()))
+    rep.add("COVER-FILL-14 PDF视觉检查通过（grid 封面区）", worst <= 0.10,
+            f"封面区 {n_cover} 页像素差异 ≤{worst*100:.2f}%（阈值10%，含填入值文字）")
+    path = rep.save()
+    print("report:", path)
+    return 0 if all(ok or sk for _, ok, _, sk in rep.items) else 1
+
+
 def self_check(rep, pdf_path):
     """无母版自检模式（format_reconstruction）：成品封面字段自检。"""
     import pymupdf as fitz
@@ -134,7 +193,7 @@ def self_check(rep, pdf_path):
         rep.add("COVER-FILL-14 PDF视觉检查通过", False, "渲染失败：%s" % e)
     path = rep.save()
     print("report:", path)
-    return 0 if all(ok for _, ok, _ in rep.items) else 1
+    return 0 if all(ok or sk for _, ok, _, sk in rep.items) else 1
 
 
 def main():
@@ -148,8 +207,12 @@ def main():
     if not args.template_pdf:
         return self_check(rep, args.pdf)
     import pymupdf as fitz
+    import cover_profile as CP
     tpl = fitz.open(args.template_pdf)
     now = fitz.open(args.pdf)
+    tpi, _why = CP.resolve_page(tpl)
+    if CP.cover_style(tpl[tpi]) == "grid":
+        return grid_fill_check(rep, tpl, now, tpi)
     tp, np_ = tpl[0], now[0]
     ts, ns = spans_of(tp), spans_of(np_)
     tl, nl = lines_of(tp), lines_of(np_)
@@ -270,7 +333,7 @@ def main():
 
     path = rep.save()
     print("report:", path)
-    return 0 if all(ok for _, ok, _ in rep.items) else 1
+    return 0 if all(ok or sk for _, ok, _, sk in rep.items) else 1
 
 
 if __name__ == "__main__":

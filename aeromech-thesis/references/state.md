@@ -34,6 +34,7 @@
 | `qa.reports` | list | 否 | `[]` | `{file,ts,summary}` |
 | `qa.findings` | list | 否 | `[]` | 与 `stage.open_issues` 联动的索引 |
 | `document_generation` | map | 否 | `{}` | DOCX 生成模式记录：`{mode: template_fidelity\|format_reconstruction, template_file: path\|null}`，S9 构建时由 `scripts/template_fidelity.select_docx_mode()` 写入 |
+| `checkpoint` | map | 否（v1.6 additive） | `{}` | 最新检查点引用：`{last_id, file, ts}`，由 `scripts/thesis_state.py` 维护（§18；只增不改既有语义） |
 | `last_updated` | string | 是 | `""` | ISO 8601 |
 
 约束：论文正文、文献全文、数据表**不得**写入 state.yaml，只写路径与摘要。
@@ -186,7 +187,7 @@ stage:
 
 ## 10. Schema 版本迁移协议
 
-当前 Skill 支持：`1.0`。
+当前 Skill 支持：`1.0`（v1.6 起读取侧同时兼容 `1.1`——1.1 仅为附加键（如 `checkpoint`），不改任何既有字段语义；**v1.6.0 发布时确认：正式 schema_version 维持 1.0，读取侧兼容 1.1（附加键 checkpoint）**）。
 
 | 旧版本 | 目标 | 迁移动作 |
 |---|---|---|
@@ -275,6 +276,7 @@ writing:
   gate_evidence: {}
   chapters: {}
 document_generation: {}   # S9 构建时写入（template-fidelity.md §2）
+checkpoint: {}            # v1.6 additive（§18；旧读取方忽略不报错；由 thesis_state.py 维护）
 qa:
   reports: []
   findings: []
@@ -500,3 +502,29 @@ thesis-project/                    # 项目根目录
    PASS / PASS_WITH_WARNINGS / PASS_WITH_HUMAN_REVIEW 且队列已裁决完毕。
 4. 自动修复产生的 REP 条目（repairs.yaml）视同产物落盘：迁移校验以 repairs.yaml + loop-log 为准，
    不得以对话声称代替；BLOCK 终态等价 QA 未关闭问题，按 §8 映射回退（设计类→S3，数据类→S6，写作类→S7）。
+
+## 18. 程序化状态层（v1.6.0）
+
+§1~§17 的规则自此有了代码执行体：`scripts/thesis_state.py`（StateIO/迁移/Checkpoint/恢复视图）、
+`scripts/stage_routing.py`（§3 允许边与 §17.1 门禁的矩阵化判定）、`scripts/thesis_orchestrator.py`
+（迁移/恢复的编排执行）。**本文件仍是语义真源；脚本是其程序化实现——文档与脚本行为不一致属缺陷**
+（`tests/v1_6/test_document_contract.py` 拦截）。
+
+1. **StateIO**：`load_state`（缺失→StateError；损坏→现场留档 `bak-corrupt` + 回退最近可解析备份；
+   高 `schema_version`→拒绝写入只读保护；未知字段原样保留）；`save_state` 恒刷新 `last_updated`；
+   `transition` 实现 §3/§4/§5/§9/§11 全部规则（非法边与前置缺失拒绝且**不落盘**，history 不记被拒
+   迁移；revert 触发源；override 确认记录+自动挂 §7 格式的 open_issue；milestone 不重复门禁）。
+2. **Checkpoint**：`.aeromech/checkpoints/CK-XXX.yaml` 追加式（ID 不复用），字段=checkpoint_id/stage/
+   task/ts/cursor/artifacts{path:{exists,sha256}}/registries（引擎快照）/qa_state/next_action/open_issues；
+   state 仅记 `checkpoint.last_id` 引用（§15 骨架 additive）。写入时点：阶段迁移、AI 证据、loop 完成、
+   **失败恢复之前**；单文件损坏跳过不拖垮恢复视图。
+3. **Resume**：`resume` 输出 {stage, checkpoint, next, artifacts_ok, qa_state, cursor, next_action,
+   from_start:false}——恢复判定读 state.yaml + checkpoints/ + research/ + artifacts/ + QA 状态；
+   已完成且 sha256 未变的产物不重做；**禁止从 S1 重启**。
+4. **Drift detection**：STATE_DRIFT（checkpoint.stage≠state.stage）与 REGISTRY_DRIFT（注册表内容
+   阶段超前 state.stage，推断表 rq/design→S3…figures→S8）→ NEEDS_HUMAN_REVIEW；ARTIFACT_MISSING → ERROR；
+   ARTIFACT_CHANGED（sha256 复算不符）→ NEEDS_HUMAN_REVIEW；STATE_INVALID → ERROR。
+   **发现漂移绝不静默覆盖 state/注册表/产物**（§10 只读保护精神在运行时的延伸）。
+5. **Recovery**：`thesis_orchestrator.classify_recovery` 消费 v1.5 诊断条目的 disposition + issue_type +
+   severity + §8 类别映射 + 当前阶段，分派 retry/repair/rollback/human_review/block；其中 rollback
+   即 §3/§4 的回退迁移（触发源=open_issue），recovery 前必建 checkpoint。细则 `orchestration.md` §8。
