@@ -641,6 +641,13 @@ def pipeline(root, steps=None):
     if "repaginate" in steps and depend_ok:
         log_step(_step(root, "repaginate",
                        [py, os.path.join(SCRIPTS, "repaginate_tables.py"), root]))
+    # v1.6 test-8.0：Word COM（update_toc/repaginate）往返会剥掉封面表的
+    # tblStyle/tblCellMar（v1.3.0 已知缺陷，cover_fidelity --restore 即为此设）；
+    # 在导出 PDF 之前恢复，保证成品封面结构与母版一致。
+    if depend_ok and tpl_abs and os.path.isfile(tpl_abs) and ("toc" in steps or "repaginate" in steps):
+        log_step(_step(root, "cover_restore",
+                       [py, os.path.join(SCRIPTS, "cover_fidelity.py"),
+                        "--restore", "--template", tpl_abs, "--docx", abs_docx]))
     if "pdf" in steps:
         if depend_ok:
             s = _step(root, "pdf", [py, os.path.join(SCRIPTS, "export_pdf.py"), root],

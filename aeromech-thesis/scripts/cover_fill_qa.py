@@ -110,17 +110,15 @@ def grid_fill_check(rep, tpl, now, tpi):
                          and x["x0"] > s["x1"] - 2]
             if not row_spans:
                 continue
-            tpl_val = max(row_spans, key=lambda z: len(z["t"]))
+            # 值槽=标签右侧最近 span（取最长会误抓同行下一格标签"职  称："）
+            tpl_val = min(row_spans, key=lambda z: z["x0"])
             fin_row = [x for x in spans_of(fp)
                        if lab in fl_ and abs(x["y0"] - fl_[lab]["y0"]) <= 8
                        and x["x0"] > fl_[lab]["x1"] - 2]
-            fin_val = max(fin_row, key=lambda z: len(z["t"])) if fin_row else None
+            fin_val = min(fin_row, key=lambda z: z["x0"]) if fin_row else None
             key = f"p{k+1}:{lab}"
-            if fin_val and not re.search(r"[Xx]{2,}", fin_val["t"]) and \
-                    fin_val["t"] != tpl_val["t"]:
-                filled.append(key)
-            elif fin_val and not re.search(r"[Xx]{2,}", fin_val["t"]):
-                filled.append(key)  # 值与占位同名（罕见），存在即算已填
+            if fin_val and fin_val["t"] != tpl_val["t"]:
+                filled.append(key)  # 值与模板示例不同=已填入（脱敏值可含 X，不比 X 模式）
             else:
                 unfilled.append(f"{key}仍为示例占位" if fin_val else f"{key}无值")
     okf = bool(filled) and not unfilled
