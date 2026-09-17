@@ -7,6 +7,7 @@ docx_engine.py — DOCX 排版原语库（aeromech-thesis v1.1.0；含 Template 
 
 规则来源：多轮真实论文交付验证（页面流 / 图+题注同页 / 页码连续性等 QA 项经实测固化）。
 """
+import html as _html
 import os
 import re
 from PIL import Image
@@ -68,7 +69,7 @@ def add_para(doc, text="", size=12, cn="宋体", bold=False, align=None, indent=
     if keep_with_next:
         pf.keep_with_next = True
     if text:
-        parts = re.split(r"\*\*(.+?)\*\*", text)
+        parts = re.split(r"\*\*(.+?)\*\*", unescape_text(text))
         for i, seg in enumerate(parts):
             if not seg:
                 continue
@@ -92,7 +93,7 @@ def add_heading(doc, text, level=1, page_break=False):
         pf.page_break_before = True
     pf.keep_with_next = True
     pf.keep_together = True
-    run = p.add_run(text)
+    run = p.add_run(unescape_text(text))
     set_font(run, "黑体", HEAD_SIZES[level], bold=False, color=RGBColor(0, 0, 0))
     return p
 
@@ -164,8 +165,29 @@ def set_cell_margins_table(t, cm=0.08):
     tblPr.append(mar)
 
 
+_ENTITY_RE = re.compile(r"&(?:[A-Za-z][A-Za-z0-9]{1,31}|#\d{1,7}|#[xX][0-9A-Fa-f]{1,6});")
+
+
+def unescape_text(t):
+    """通用 HTML/XML 实体解码（v1.6 test-8.0：外部元数据源如 Crossref API 的
+    XML 转义文本 &amp;/&quot;/&#39;/数字实体…可能流入任意登记文本）。
+    循环解码至不动点以覆盖双重转义（&amp;amp;→&）；上限 3 轮防放大。
+    只认合法实体形态，普通 "& " 与 "A&B" 不受影响。"""
+    if not t or "&" not in t:
+        return t
+    out = str(t)
+    for _ in range(3):
+        if not _ENTITY_RE.search(out):
+            break
+        new = _html.unescape(out)
+        if new == out:
+            break
+        out = new
+    return out
+
+
 def clean_cell(t):
-    return t.replace("**", "").replace("`", "").strip()
+    return unescape_text(t).replace("**", "").replace("`", "").strip()
 
 
 def cell_borders(cell, edges):
@@ -279,7 +301,7 @@ def add_caption(doc, text, keep_with_next=False):
     p.paragraph_format.space_after = Pt(10)
     if keep_with_next:
         p.paragraph_format.keep_with_next = True
-    run = p.add_run(text)
+    run = p.add_run(unescape_text(text))
     set_font(run, "宋体", 10.5)
     return p
 
@@ -338,13 +360,13 @@ def figure_block(doc, png_path, fig_caption, img_type="default",
     p_cap.paragraph_format.line_spacing = 1.3
     p_cap.paragraph_format.space_before = Pt(2)
     p_cap.paragraph_format.space_after = Pt(6)
-    cr = p_cap.add_run(fig_caption)
+    cr = p_cap.add_run(unescape_text(fig_caption))
     set_font(cr, "宋体", 10.5)
     if fig_caption_en:
         p_cap2 = cell.add_paragraph()
         p_cap2.alignment = WD_ALIGN_PARAGRAPH.CENTER
         p_cap2.paragraph_format.line_spacing = 1.3
-        cr2 = p_cap2.add_run(fig_caption_en)
+        cr2 = p_cap2.add_run(unescape_text(fig_caption_en))
         set_font(cr2, "宋体", 10.5)
 
     tbl_el = tb._tbl

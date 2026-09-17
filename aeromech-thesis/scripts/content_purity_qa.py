@@ -102,6 +102,17 @@ def main():
     rep.add("MD-01 无 Markdown 残留", not bad_md,
             "无 ** / | / ## / --- 残留" if not bad_md else f"残留: {bad_md}")
 
+    # ENT-01 HTML/XML 实体残留（PDF 文本层）——外部元数据源（如 Crossref API 的
+    # XML 转义刊名）可能把 &amp;/&quot;/&#39;/数字实体带入正文；渲染层已通用解码，
+    # 此项兜底防任何来源再泄漏。只认合法实体形态，普通 "& " 与 "A&B" 不命中。
+    _ent = re.compile(r"&(?:amp|lt|gt|quot|apos|nbsp|#\d{1,7}|#[xX][0-9A-Fa-f]{1,6});")
+    bad_ent = []
+    for i, t in enumerate(pages):
+        for m in set(_ent.findall(t)):
+            bad_ent.append((i + 1, m))
+    rep.add("ENT-01 无 HTML 实体残留", not bad_ent,
+            "无 &amp;/&lt;/&#…; 实体" if not bad_ent else f"实体残留: {bad_ent[:6]}")
+
     # INT-01 内部路径/工程词泄漏
     leaks = []
     for kw in ["artifacts/", ".aeromech", "transcripts/", "state.yaml", "materials.yaml",

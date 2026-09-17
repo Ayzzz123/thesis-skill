@@ -196,7 +196,7 @@ def header_text(sec, text, size=9, cn="宋体", doc=None):
                 except Exception:
                     pass
                 break
-    run = p.add_run(text)
+    run = p.add_run(E.unescape_text(text))
     if not applied:
         E.set_font(run, cn, size)
     return p
@@ -373,7 +373,7 @@ def fill_cover_fields(doc, values, table_limit=None):
                     target = paras[i + 1]
                 else:
                     target = p
-                run = target.add_run(str(value))
+                run = target.add_run(E.unescape_text(str(value)))
                 E.set_font(run, "宋体", 14)
                 filled[label] = str(value)
                 break
@@ -382,11 +382,12 @@ def fill_cover_fields(doc, values, table_limit=None):
 
 def _replace_placeholder_para(p, value):
     """占位段 → 值：保留首 run 格式（字体/下划线），其余 run 清空（"张 X" 跨 run 场景）。"""
+    value = E.unescape_text(str(value))
     runs = p.runs
     if not runs:
-        p.add_run(str(value))
+        p.add_run(value)
         return True
-    runs[0].text = str(value)
+    runs[0].text = value
     for r in runs[1:]:
         r.text = ""
     return True
@@ -447,7 +448,7 @@ def _fill_cover_grid(tables, values):
                             hit = True
                             break
                         if not p.text.strip():
-                            p.add_run(str(value))
+                            p.add_run(E.unescape_text(str(value)))
                             filled[label] = str(value)
                             hit = True
                             break
@@ -510,17 +511,19 @@ def rpr(run, ascii_f="Times New Roman", ea="宋体", sz=12, bold=False, sup=Fals
 
 
 def add_para_runs(p, text, ascii_f="Times New Roman", ea="宋体", sz=12, bold=False):
+    # v1.6 test-8.0：逐段解码 HTML/XML 实体（外部元数据源如 Crossref 的 &amp; 等）；
+    # 在标记切分之后解码，避免解码结果被误当作 **/[n] 标记二次解释。
     for seg in re.split(r"(\*\*.+?\*\*|\[\d+\])", text):
         if not seg:
             continue
         if seg.startswith("**") and seg.endswith("**"):
-            run = p.add_run(seg[2:-2])  # 剥离 Markdown 加粗标记
+            run = p.add_run(E.unescape_text(seg[2:-2]))  # 剥离 Markdown 加粗标记
             rpr(run, ascii_f, ea, sz, bold=True)
         elif re.fullmatch(r"\[\d+\]", seg):
             run = p.add_run(seg)
             rpr(run, ascii_f, ea, sz, bold=bold, sup=True)
         else:
-            run = p.add_run(seg)
+            run = p.add_run(E.unescape_text(seg))
             rpr(run, ascii_f, ea, sz, bold=bold)
     return p
 

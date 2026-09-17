@@ -241,6 +241,45 @@ def main():
           "图1-1 示意" in celltext and "Fig.1-1 demo" in celltext,
           celltext[:60].replace("\n", " / "))
 
+    # ---------- BUILD-05 HTML 实体通用解码（test-8.0 人工 PDF 验收回归） ----------
+    import docx_engine as E_mod
+    check("BUILD-05a unescape 通用实体（&amp;/&quot;/&#39;/数字实体）",
+          E_mod.unescape_text("Journal of Intelligent &amp; Fuzzy Systems") ==
+          "Journal of Intelligent & Fuzzy Systems"
+          and E_mod.unescape_text("A &quot;b&quot; &#39;c&#39;") == "A \"b\" 'c'"
+          and E_mod.unescape_text("x&#8212;y") == "x\u2014y")
+    check("BUILD-05a 双重转义解至不动点（&amp;amp;→&）",
+          E_mod.unescape_text("&amp;amp;") == "&")
+    check("boundary 普通与号不误伤（A&amp;B 与裸 A&B 均→A&B）",
+          E_mod.unescape_text("A&B") == "A&B"
+          and E_mod.unescape_text("5%~8% & 9%") == "5%~8% & 9%")
+    eroot = F.make_project(os.path.join(tmp, "entity"), with_template=False)
+    contract(eroot, chapters=("artifacts/chapters/ch1.md",))
+    w(eroot, "artifacts/literature.md",
+      "[1] Liu K. Fault diagnosis of hydraulic retraction system[J]. "
+      "Journal of Intelligent &amp; Fuzzy Systems, 2018.\n")
+    ce = yaml.safe_load(open(TB.contract_path(eroot), encoding="utf-8"))
+    ce["figures"] = [{"figure_id": "FIG-001", "display": "图1-1",
+                      "file": ".aeromech/artifacts/figures/final/fig1-1.png",
+                      "caption_cn": "图1-1 实体&amp;测试", "caption_en": "Fig.1-1 &amp; test"}]
+    ce["content"]["chapters"] = ["artifacts/chapters/fig.md"]
+    w(eroot, "artifacts/chapters/fig.md",
+      "# 第1章 图测试\n\n（图1-1 示意）\n\n正文一句。\n")
+    w(eroot, "build-contract.yaml", yaml.safe_dump(ce, allow_unicode=True))
+    from PIL import Image as _Img2
+    fdir2 = os.path.join(eroot, ".aeromech", "artifacts", "figures", "final")
+    os.makedirs(fdir2, exist_ok=True)
+    _Img2.new("RGB", (800, 400), "white").save(os.path.join(fdir2, "fig1-1.png"))
+    e_out, _ = TB.build_docx(eroot)
+    ed = _Doc(e_out)
+    etext = "\n".join(p.text for p in ed.paragraphs)
+    check("BUILD-05b 参考文献段实体已解码（&amp;→&，非单篇特例）",
+          "Intelligent & Fuzzy Systems" in etext and "&amp;" not in etext)
+    ecaps = "\n".join(c.text for t in ed.tables for r in t.rows for c in r.cells)
+    check("BUILD-05b 图题双语段实体已解码",
+          "图1-1 实体&测试" in ecaps and "Fig.1-1 & test" in ecaps
+          and "&amp;" not in ecaps)
+
     shutil.rmtree(tmp, ignore_errors=True)
     print(f"test_thesis_build 结果: PASS={PASS} FAIL={FAIL}")
     return 1 if FAIL else 0
