@@ -458,7 +458,10 @@ def _run_impl(root, out_dir=None, pdf=None, verbose=True):
     body_hits = []
     if simulated_only and (texts["chapters"].strip() or texts["conclusion"].strip()):
         body_text = texts["chapters"] + "\n" + texts["conclusion"]
-        for group, words in (("CRIT", STRONG_PATTERNS_CRIT), ("HIGH", STRONG_PATTERNS_HIGH)):
+        # 只扫 HIGH（强度词：证明/显著/普遍/必然）——CRIT 是数据身份词，在背景陈述、
+        # 拒绝句式、RQ 描述中合法高频出现，正文级扫描误报率过高；身份声称风险由
+        # 注册表级 claim 扫描 + SYNTH_STRONG 文本级扫描覆盖（v1.5 机制，不动）。
+        for group, words in (("HIGH", STRONG_PATTERNS_HIGH),):
             h = body_claim_hits(body_text, words)
             if h:
                 body_hits.append((group, h))
