@@ -187,7 +187,7 @@ stage:
 
 ## 10. Schema 版本迁移协议
 
-当前 Skill 支持：`1.0`（v1.6 起读取侧同时兼容 `1.1`——1.1 仅为附加键（如 `checkpoint`），不改任何既有字段语义；**正式 schema_version 升级随 v1.6.0 发布判定**）。
+当前 Skill 支持：`1.0`（v1.6 起读取侧同时兼容 `1.1`——1.1 仅为附加键（如 `checkpoint`），不改任何既有字段语义；**v1.6.0 发布时确认：正式 schema_version 维持 1.0，读取侧兼容 1.1（附加键 checkpoint）**）。
 
 | 旧版本 | 目标 | 迁移动作 |
 |---|---|---|
@@ -503,7 +503,7 @@ thesis-project/                    # 项目根目录
 4. 自动修复产生的 REP 条目（repairs.yaml）视同产物落盘：迁移校验以 repairs.yaml + loop-log 为准，
    不得以对话声称代替；BLOCK 终态等价 QA 未关闭问题，按 §8 映射回退（设计类→S3，数据类→S6，写作类→S7）。
 
-## 18. 程序化状态层（v1.6.0 开发中）
+## 18. 程序化状态层（v1.6.0）
 
 §1~§17 的规则自此有了代码执行体：`scripts/thesis_state.py`（StateIO/迁移/Checkpoint/恢复视图）、
 `scripts/stage_routing.py`（§3 允许边与 §17.1 门禁的矩阵化判定）、`scripts/thesis_orchestrator.py`

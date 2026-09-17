@@ -1,8 +1,8 @@
 # CHANGELOG — aeromech-thesis
 
-## [Unreleased] — v1.6.0 Full-Stack Thesis Orchestration（开发中，分支 feature-1.6.0-full-stack-orchestration）
+## v1.6.0 — Full-Stack Thesis Orchestration
 
-**状态：Phase 0~5 已完成；Phase 6（test-8.0 全栈冷启动）与 Phase 7（Release Candidate 判定与版本升级）未执行。正式版本号仍为 v1.5.0——本节不构成交付承诺。**
+**状态：已发布（2026-09-17）。发布验证：Phase 0~5 实现+测试；Phase 6 = test-8.0 全栈冷启动（新校模板、四断点恢复实测、隐藏缺陷自查含 2 项 DETECTION FAILED 修复复验、人工复核 7/7、delivery_gate=PASS）；Phase 7 = RC 报告与版本升级 v1.5.0→v1.6.0。tests/v1_6 395 断言 + v1_4/v1_4_1/v1_5/test_a/test_b 全绿 + t30~t70 外部回归 + dev↔install IDENTICAL。**
 
 已完成（Phase 0~4，实现+测试；各 Phase 报告见仓库 .aeromech/artifacts/analysis/）：
 
@@ -40,9 +40,20 @@
   state.md §18 + schema additive（checkpoint 键、读取兼容 1.1）；delivery-pipeline.md §1 流程图更新 +
   §8.4/§8.5；README v1.6 development/roadmap；`test_document_contract.py`（文档=代码=测试一致性锁）。
 
-即将进行：Phase 6 = test-8.0 全栈冷启动（新材料/新题目，S3/S5/S7/S9 四断点恢复实测，
-Template+Research+Loop+Figure+Doc+PDF 联合触发）；Phase 7 = 全回归 + `v1.6-release-candidate-report.md`
-+ RC PASS 判定 + SKILL 版本 1.5.0→1.6.0 升级。
+- Phase 6 test-8.0 全栈冷启动（新材料/新题目：中国民用航空飞行学院官方模板 + GB/T 7713.1/7714；
+  S3/S5/S7/S9 四断点恢复实测全部 RESUMED；Template+Research+Loop+Figure+Build+Gate 联合触发；
+  交付物 delivery_gate=PASS；报告 `.aeromech/artifacts/qa/test-8.0-final-report.md`）。
+- Phase 7 发布：全回归复跑 + `v1.6-release-report.md` + RC PASS 判定 + 版本三联动升级
+  （SKILL/README/CHANGELOG v1.5.0→v1.6.0；test_document_contract 版本态断言同步翻转到发布态）。
+
+Test-8.0 期间发现并修复的根因缺陷（8 类，全部回归锁定，不针对单篇特例）：
+① parse_md 表体静默丢失（英文题注缺失时）；② 契约 tables 域未接通 + 图/表双语题注分流；
+③ 图生命周期误含 TABLE-* 条目；④ 封面填充/对照 QA 硬编码旧校口径（新增 cover_profile 风格画像
+images/grid/lines + 契约驱动 cover_fields/cover_tables/cover_text_fills）；⑤ QA 检测器硬编码章数/
+附录字母/目录窗口/正文起点（改为从文本派生）；⑥ Word COM 往返剥 w:sz/tblStyle（有效字号回退 +
+cover_restore 步骤）；⑦ 检测缺口：正文级强断言（RQG-10 正文 HIGH 词扫描→NHR）与悬空图引用
+（FIG-13→FAIL）——两项 DETECTION FAILED 如实记录后根因修复并复验；⑧ HTML 实体残留（通用
+unescape_text 接全部 DOCX 文本入口 + content_purity ENT-01 兜底）。
 
 ## v1.5.0 — Research Intelligence & Agent Loop
 

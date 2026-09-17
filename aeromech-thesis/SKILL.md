@@ -5,9 +5,7 @@ description: 航空机械与飞行器维修工程方向的毕业论文/毕业设
 
 # AeroMech Thesis（AMT）
 
-> 版本：v1.5.0（Research Intelligence & Agent Loop：v1.4.1 稳定基线之上——① Research Design Registry（design.yaml/scope.yaml/repairs.yaml，随注册表引擎）；② 方法选择审计与 Research Feasibility Gate RF-01~10（`scripts/research_design.py`）；③ 统一诊断引擎（19 类 issue_type + 根因 + 影响 + auto/queue/block 分流，`scripts/research_diagnosis.py`）；④ Repair Plan Registry 与白名单自动修复（论断降级/摘要数字同步/受控 recompute/模拟标签回填，全留痕可复检，`scripts/research_repair.py`）；⑤ Research Agent Loop（PLAN→ANALYZE→DETECT→DIAGNOSE→REPAIR→RE-ANALYZE→VALIDATE→ACCEPT，≤5 轮，终态 BLOCK/PASS_WITH_HUMAN_REVIEW/PASS_WITH_WARNINGS/PASS，`scripts/research_agent_loop.py`）；⑥ 8 维 Research Quality Score（Critical/High 未解决不得被总分掩盖，`scripts/research_quality_score.py`）；规则见 `references/research-intelligence.md`，阶段职责见 §20；兼容 v1.0 状态机/诚信/QA 与 v1.1.0~v1.4.1 全部能力，只增不破：旧项目无 design/scope/repairs 时 v1.5 工具全部 NOT_APPLICABLE/不阻塞；发布验证：tests/v1_5 418 断言 + test-7.0 端到端 + t30~t60 回归）
->
-> **v1.6.0 开发中（分支 feature-1.6.0-full-stack-orchestration，正式版本仍为 v1.5.0，待 test-8.0 + 全回归 + 全 QA 通过后升级）**：Full-Stack Thesis Orchestration——把既有能力串成完整、可恢复、可交付的编排闭环：StateIO/Checkpoint/Resume（`thesis_state.py`）、统一材料进入（`material_ingestion.py`）、School Requirement Context 字段级 provenance（`school_requirements.py`）、Research Context 只读聚合（`research_context.py`）、阶段调度矩阵与交付五态判定（`stage_routing.py`）、Thesis Orchestrator（`thesis_orchestrator.py`：Action 模型/五策略 Failure Recovery/Agent Loop 集成/drift 检测）、Figure Provider 契约（`figure_iface.py`，不复制 Figure Engine）、统一 Thesis Build Pipeline + Artifact Manifest（`thesis_build.py`）、Delivery Gate 全聚合器（`delivery_gate.py`）；规则总纲 `references/orchestration.md`，要点见 §21；编排层只调度不重做业务（注册表/RQG/诊断/修复/Loop/QA 全部复用 v1.4/v1.5 原模块）；Phase 0~5 已完成（tests/v1_6 317+ 断言、v1_4/v1_4_1/v1_5 与 t30~t70 回归绿），Phase 6（test-8.0 冷启动）/Phase 7（RC 发布判定）未完成——**发布前本节所述以开发分支行为为准，不视为 v1.5.0 交付承诺**。
+> 版本：v1.6.0（Full-Stack Thesis Orchestration：v1.5.0 研究智能基线之上——把既有能力串成完整、可恢复、可交付的编排闭环：① StateIO/Checkpoint/Resume（`thesis_state.py`：state.md §3~§11 程序化迁移校验、CK-XXX 检查点+SHA256、resume from_start=false、drift 检测）；② 统一材料进入（`material_ingestion.py`：scan/SHA256 去重/类型推断，"不得重复读取"程序化）；③ School Requirement Context 字段级 provenance（`school_requirements.py`：official/sample/default/unknown，样文永不冒充 official，PDF 规范不猜测）；④ Research Context 只读聚合（`research_context.py`：13 注册表统一视图）；⑤ 阶段调度矩阵与交付五态判定（`stage_routing.py`：S1~S10 MATRIX、route() 只判定不执行）；⑥ Thesis Orchestrator（`thesis_orchestrator.py`：Action 模型 JSONL 留痕、五策略 Failure Recovery、Agent Loop 集成、checkpoint/resume）；⑦ Figure Provider 契约（`figure_iface.py`：plan/generate/validate + 生命周期，不复制协作者 Figure Engine）；⑧ 统一 Thesis Build Pipeline + Artifact Manifest（`thesis_build.py`：build-contract.yaml 七域、双模式组装、content_identity）；⑨ Delivery Gate 全聚合器（`delivery_gate.py`：格式链+构建步+文档/manifest+图生命周期+研究侧+人工双队列 → 五态终局）；规则总纲 `references/orchestration.md`，要点见 §21；编排层只调度不重做业务（注册表/RQG/诊断/修复/Loop/QA 全部复用 v1.4/v1.5 原模块）；兼容 v1.0~v1.5 全部能力，只增不破：旧项目无 checkpoint/契约/注册表 = 各域 NOT_APPLICABLE 不误伤；发布验证：tests/v1_6 395 断言 + v1_4/v1_4_1/v1_5 全绿 + test-8.0 全栈冷启动（delivery_gate=PASS，7/7 人工复核完成）+ t30~t70 外部回归）
 >
 
 航空机械与飞行器维修工程方向的毕业论文研究与写作智能助手。服务对象：飞行器维修工程技术、航空机电设备维修、飞机维修、航空机械、航空制造、飞行器制造、机械工程、机械设计制造等专业的高职/本科学生。
@@ -46,7 +44,7 @@ description: 航空机械与飞行器维修工程方向的毕业论文/毕业设
 | QA | `references/agents/qa.md` | S9 论文体检（六大维度检查，四级风险分级） |
 | Defense | `references/agents/defense.md` | S10 答辩准备（PPT结构/多版本答辩稿/预测问题库） |
 | Materials Manager | `references/state.md` §16 | `.aeromech/materials.yaml` 资料登记、School Format Profile、来源等级管理 |
-| Thesis Orchestrator（v1.6 开发中） | `references/orchestration.md` | 编排层：StateIO/Checkpoint/Resume（`thesis_state.py`）、材料统一进入（`material_ingestion.py`）、School Requirement Parser（`school_requirements.py`）、Research Context 聚合（`research_context.py`）、调度矩阵/门禁判定（`stage_routing.py`）、Orchestrator+五策略 Failure Recovery（`thesis_orchestrator.py`）、Figure Provider（`figure_iface.py`）、统一构建+Manifest（`thesis_build.py`）、Delivery Gate 聚合器（`delivery_gate.py`）；要点 §21 |
+| Thesis Orchestrator（v1.6.0） | `references/orchestration.md` | 编排层：StateIO/Checkpoint/Resume（`thesis_state.py`）、材料统一进入（`material_ingestion.py`）、School Requirement Parser（`school_requirements.py`）、Research Context 聚合（`research_context.py`）、调度矩阵/门禁判定（`stage_routing.py`）、Orchestrator+五策略 Failure Recovery（`thesis_orchestrator.py`）、Figure Provider（`figure_iface.py`）、统一构建+Manifest（`thesis_build.py`）、Delivery Gate 聚合器（`delivery_gate.py`）；要点 §21 |
 
 **本版最小闭环**：论文题目 → 题目分析 → 论文类型判定 → 研究方案 → 论文目录 → 一章正文 → `.aeromech/state.yaml` 保存 → 新会话恢复。
 
@@ -87,7 +85,7 @@ description: 航空机械与飞行器维修工程方向的毕业论文/毕业设
 | 页级保真交付（Page Fidelity） | `scripts/page_fidelity_qa.py`（HF-01~04 页眉 / AF-01~04 摘要页 / AT-01~05 附录表 / RF-01~04 参考文献，v1.3.1） |
 | 图表版式交付（Figure/Table Fidelity） | `scripts/figure_table_qa.py`（FIG-01~12 图片 / TAB-01~10 表格）与 `scripts/content_purity_qa.py`（MD/INT/PRM/APX，v1.3.2） |
 | 图形拓扑质量（Graph Quality） | `scripts/graph_quality_qa.py`（GQ-01~15）+ `scripts/figkit.py`（绘制+layout 几何元数据，v1.3.3） |
-| 编排层（v1.6 开发中：状态/断点/调度/恢复/统一构建/门禁聚合） | `references/orchestration.md`（规则总纲）+ `scripts/thesis_state.py` / `material_ingestion.py` / `school_requirements.py` / `research_context.py` / `stage_routing.py` / `thesis_orchestrator.py` / `figure_iface.py` / `thesis_build.py` / `delivery_gate.py` |
+| 编排层（v1.6.0：状态/断点/调度/恢复/统一构建/门禁聚合） | `references/orchestration.md`（规则总纲）+ `scripts/thesis_state.py` / `material_ingestion.py` / `school_requirements.py` / `research_context.py` / `stage_routing.py` / `thesis_orchestrator.py` / `figure_iface.py` / `thesis_build.py` / `delivery_gate.py` |
 
 ## 4. Master 路由规则
 
@@ -112,7 +110,7 @@ description: 航空机械与飞行器维修工程方向的毕业论文/毕业设
 | “给论文研究质量打分” | S9 | Research Intelligence（quality score 8 维） |
 | “准备答辩””答辩PPT” | S10 | Defense |
 | “继续论文”“接着上次” | 断点 | State Manager 恢复协议（v1.6 起程序化：`thesis_state.py resume` / `thesis_orchestrator.py resume`，含 drift 检查） |
-| “按流程推进论文”“自动跑下一步”（v1.6 开发中） | 编排 | `references/orchestration.md` + `scripts/thesis_orchestrator.py`（status/step/drive/run-loop/apply-human/gate） |
+| “按流程推进论文”“自动跑下一步”（v1.6.0） | 编排 | `references/orchestration.md` + `scripts/thesis_orchestrator.py`（status/step/drive/run-loop/apply-human/gate） |
 
 **路由注**：首个请求即文献类（如“帮我找/编参考文献”）时，`stage.current` 保持初始化值不变，文献登记表按**跨阶段诚信产物**处理（`integrity.md` §5 第 6 条），不触发 S1→S4 迁移。
 
@@ -313,7 +311,7 @@ S10 答辩独立，不受交付层影响。核心原则：
 - 进入 Delivery Gate 前必须通过：`scripts/pdf_qa.py`（16 项 + TOC-01~10）与 `scripts/visual_regression.py`（占用率 + A/B 类判定）。
 - **v1.4 起**：若项目已建立 Research Integrity 注册表（`.aeromech/research/`），Delivery Gate 还必须通过 `scripts/research_quality_qa.py`（RQG-01~15）；其中 Critical/High 问题（虚构伪装、证据越界、模拟身份丢失、结论断链等）阻止 Delivery Gate，Medium 记录披露。注册表未建立的旧项目不阻塞（记 `not_initialized`）。
 - **v1.5 起**：若项目已建立 Research Intelligence 注册表（design.yaml/scope.yaml），Delivery Gate 还必须通过 `scripts/research_agent_loop.py`——终态 BLOCK（存在未解决 Critical/High，含 FEASIBILITY_BLOCK）禁止交付；PASS_WITH_HUMAN_REVIEW 须完成人工裁决（`.aeromech/research/human-review-queue.yaml`：approve/modify/reject，不静默）后方可交付；PASS_WITH_WARNINGS / WARN 记录披露。`scripts/research_quality_score.py` 8 维评分随交付报告输出，**总分不构成交付依据**（blocked 时仅为展示值）。旧项目（无 design/scope）记 not_initialized，不阻塞（兼容规则同 v1.4）。
-- **v1.6 开发中**：交付域程序化统一——`scripts/thesis_build.py`（build-contract.yaml → 双模式组装 → 固定顺序 pipeline：docx→toc→repaginate→pdf→finalize→qa → artifact-manifest.yaml；任一失败输出 {failed_stage, error_code, reason, suggested_action} 且下游留痕，不得假装成功）与 `scripts/delivery_gate.py`（聚合格式链 QA 报告 + pipeline 步骤 + Document/manifest 一致性 + Figure 生命周期 + 研究侧 RQG/loop + 人工双队列 → 五态终局 PASS/PASS_WITH_WARNINGS/PASS_WITH_HUMAN_REVIEW/BLOCK/ERROR，每项带 evidence/reason/remediation；缺决定性证据=BLOCK，ERROR 绝不透 PASS，总分不参与放行；旧项目无契约→文档域 NOT_APPLICABLE 不误伤）。规则 `references/orchestration.md` §11-§13。
+- **v1.6.0 已发布**：交付域程序化统一——`scripts/thesis_build.py`（build-contract.yaml → 双模式组装 → 固定顺序 pipeline：docx→toc→repaginate→pdf→finalize→qa → artifact-manifest.yaml；任一失败输出 {failed_stage, error_code, reason, suggested_action} 且下游留痕，不得假装成功）与 `scripts/delivery_gate.py`（聚合格式链 QA 报告 + pipeline 步骤 + Document/manifest 一致性 + Figure 生命周期 + 研究侧 RQG/loop + 人工双队列 → 五态终局 PASS/PASS_WITH_WARNINGS/PASS_WITH_HUMAN_REVIEW/BLOCK/ERROR，每项带 evidence/reason/remediation；缺决定性证据=BLOCK，ERROR 绝不透 PASS，总分不参与放行；旧项目无契约→文档域 NOT_APPLICABLE 不误伤）。规则 `references/orchestration.md` §11-§13。
 - 研究证据层限制（无真实故障数据、无受控手册、文献全文未获取、机型未绑定等）不得因排版成功被覆盖，仍按 Integrity 机制披露。
 - 脚本清单：`render_mermaid.py`（图渲染+Chrome 自动探测）、`docx_engine.py`（排版原语）、`build_docx.py`（内容层组装器模板，用法 `python build_docx.py <project_root>`）、`update_toc.py`、`export_pdf.py`、`pdf_qa.py`、`visual_regression.py`、`cover_fidelity.py`（CF-01~20 + tblPr 恢复）。所有脚本带命令行入口与退出码。交付链末尾建议执行 `finalize_metadata.py <project_root>`（清 DOCX/PDF 元数据痕迹，须在最后一次 Word 保存之后运行）。
 
@@ -605,7 +603,7 @@ PASS_WITH_HUMAN_REVIEW（且复核完成）。与状态机迁移规则（§5/§6
 **旧项目兼容**：无 design/scope/repairs 注册表的项目，v1.5 工具全部输出 NOT_APPLICABLE /
 退出码 2 不阻塞（与 v1.4 同策略）。测试：`tests/v1_5/`（13 个测试文件 + run_all.py）。
 
-## 21. Full-Stack Orchestration Layer（v1.6.0 开发中）
+## 21. Full-Stack Orchestration Layer（v1.6.0）
 
 完整规则见 `references/orchestration.md`（分层地图/主循环/Action 模型/五策略恢复/drift 检测/矩阵/构建/Gate/CLI 速查）。要点：
 
@@ -622,4 +620,4 @@ PASS_WITH_HUMAN_REVIEW（且复核完成）。与状态机迁移规则（§5/§6
 3. **判定与执行分离**：`stage_routing` 只判定（矩阵=数据；S1-S10 出口/前进边/AI 挂载点全配置化，无题目特例）；证据缺=SKIPPED_WITH_REASON，编排必须先跑对应既有工具再前进；出口产物缺=NEEDS_UPSTREAM_WORK 交回 Agent 层，编排不代写内容。恢复五策略（retry/repair/rollback/human_review/block）由 issue_type+severity+v1.5 disposition+阶段映射共同决定。
 4. **交付链与门禁统一**：新论文经 `build-contract.yaml` + `thesis_build`（双模式、固定顺序、失败四元组裁决、artifact-manifest）产出——**不再逐项目手写 builder**；`figure_iface` 契约（plan_figures/generate_figure/validate_figure + PLANNED→GENERATED→VALIDATED→EMBEDDED→VERIFIED 生命周期）对接图形能力，不复制 Figure Engine，图无 RQ/AN/CL 链接不得过 validate；`delivery_gate.py` 聚合全部证据域成五态终局，缺项=BLOCK、ERROR 不透 PASS、旧项目对应域 NOT_APPLICABLE 不误判。
 
-**旧项目兼容**：无 checkpoint/契约/注册表 = 各域 NOT_APPLICABLE（不误伤、不误判 PASS）；v1.6 不接管旧项目文档域（其各自 builder 交付不受影响）。测试：`tests/v1_6/`（Phase 1~5 各模块 + `test_document_contract.py` 文档=代码一致性锁）。Phase 6（test-8.0 冷启动）/Phase 7（RC 报告与版本升级）完成前，本节能力不视为正式发布。
+**旧项目兼容**：无 checkpoint/契约/注册表 = 各域 NOT_APPLICABLE（不误伤、不误判 PASS）；v1.6 不接管旧项目文档域（其各自 builder 交付不受影响）。测试：`tests/v1_6/`（395 断言，Phase 1~5 各模块 + `test_document_contract.py` 文档=代码一致性锁）。发布验证：Phase 6 = test-8.0 全栈冷启动（delivery_gate=PASS、7/7 人工复核完成、四断点恢复实测、隐藏缺陷自查含 2 项 DETECTION FAILED 修复复验）+ t30~t70 外部回归 + Phase 7 = RC 报告与版本升级（v1.5.0→v1.6.0）。

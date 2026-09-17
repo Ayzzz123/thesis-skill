@@ -302,18 +302,28 @@ mmdc 失败 → matplotlib 生成真正可读的替代图（含流程图框/故�
 
 ## 11. 当前版本
 
-**aeromech-thesis v1.5.0（Research Intelligence & Agent Loop）**
+**aeromech-thesis v1.6.0（Full-Stack Thesis Orchestration）**
 
-> **v1.6.0 development / roadmap（开发分支 feature-1.6.0-full-stack-orchestration，未发布）**：
-> 目标是 Full-Stack Thesis Orchestration——把既有能力串成完整、可恢复、可交付的毕业论文 Agent：
-> StateIO + Checkpoint + Resume、统一材料进入（Material Ingestion）、School Requirement Context、
-> Research Context 聚合、阶段调度矩阵、Thesis Orchestrator（Action 模型 + 五策略 Failure Recovery +
-> Drift 检测）、Figure Provider 接口（不复制 Figure Engine）、统一 Thesis Build Pipeline +
-> Artifact Manifest、Delivery Gate 全聚合。规则见 `references/orchestration.md`，SKILL.md §21。
-> 进度：Phase 0~5 已完成（tests/v1_4 / v1_4_1 / v1_5 / v1_6 与 test_a/b 全绿，t30~t70 外部回归绿）；
-> **Phase 6（test-8.0 全栈冷启动）与 Phase 7（Release Candidate 判定）未完成**——v1.6.0 正式版本号
-> 只有在 test-8.0 + 全回归 + 全 QA 全部 PASS 后才从 v1.5.0 升级。开发分支行为不构成本 README
-> 所述 v1.5.0 的能力承诺；发布后本节将并入 §2/§11。
+> v1.6.0 已发布（分支 feature-1.6.0-full-stack-orchestration，经 test-8.0 全栈冷启动 + 全回归 +
+> 全 QA + 7/7 人工复核后从 v1.5.0 升级）。Full-Stack Thesis Orchestration——把既有能力串成完整、
+> 可恢复、可交付的毕业论文 Agent：StateIO + Checkpoint + Resume、统一材料进入（Material
+> Ingestion）、School Requirement Context、Research Context 聚合、阶段调度矩阵、Thesis Orchestrator
+> （Action 模型 + 五策略 Failure Recovery + Drift 检测）、Figure Provider 接口（不复制 Figure Engine）、
+> 统一 Thesis Build Pipeline + Artifact Manifest、Delivery Gate 全聚合。规则见 `references/orchestration.md`，
+> SKILL.md §21。发布验证：tests/v1_6 395 断言 + v1_4/v1_4_1/v1_5 全绿 + test-8.0 delivery_gate=PASS
+> （四断点恢复实测、隐藏缺陷自查含 2 项 DETECTION FAILED 修复复验、人工复核 7/7）+ t30~t70 外部回归。
+
+v1.6.0 在 v1.5.0 研究智能基线之上把既有能力串成编排闭环（编排层只调度不重做业务：注册表/RQG/
+诊断/修复/Loop/QA 全部复用原模块），既有能力只增不破：
+- ✅ **StateIO / Checkpoint / Resume**（`thesis_state.py`）：state.md §3~§11 程序化迁移校验（非法边拒绝不落盘）；CK-XXX 检查点（artifacts+SHA256/注册表快照/qa_state）；resume from_start=false，禁止从 S1 重启
+- ✅ **统一材料进入**（`material_ingestion.py`）：scan/SHA256 去重/类型推断注册——"不得重复读取材料"程序化
+- ✅ **School Requirement Context**（`school_requirements.py`）：模板结构机械提取+逐字段 provenance（official/sample/default/unknown）；样文永不冒充 official；PDF 规范不猜测
+- ✅ **Research Context 聚合**（`research_context.py`）：13 注册表只读统一视图（OK/NOT_APPLICABLE/ERROR）
+- ✅ **阶段调度矩阵 + 交付五态**（`stage_routing.py`）：S1~S10 出口/前进边/AI 挂载点全配置化；route() 只判定不执行
+- ✅ **Thesis Orchestrator**（`thesis_orchestrator.py`）：Action 模型 JSONL 留痕（禁止静默执行）；五策略 Failure Recovery；drift 检测不静默覆盖
+- ✅ **Figure Provider 契约**（`figure_iface.py`）：plan/generate/validate + 生命周期 PLANNED→GENERATED→VALIDATED→EMBEDDED→VERIFIED；研究链接硬关卡；不复制 Figure Engine
+- ✅ **统一 Thesis Build + Manifest**（`thesis_build.py`）：build-contract.yaml 七域；双模式组装；固定顺序 pipeline；失败四元组裁决；artifact-manifest content_identity
+- ✅ **Delivery Gate 全聚合**（`delivery_gate.py`）：格式链+构建步+文档/manifest+图生命周期+研究侧+人工双队列 → 五态终局；缺证据=BLOCK、ERROR 不透 PASS
 
 v1.5.0 在 v1.4.1 稳定基线之上新增研究智能层（发现→诊断→修复→再验证闭环），既有能力只增不破：
 - ✅ **Research Design Registry**：design.yaml/scope.yaml/repairs.yaml 三注册表（随注册表引擎，缺省 N/A 兼容旧项目）
@@ -461,12 +471,24 @@ Skill：正在登记材料...
 
 ## 15. README 的原则
 
-本 README 描述的是 **aeromech-thesis v1.5.0** 当前已实现的能力。任何未来功能必须先实现并通过测试，再更新 README，不得为了宣传而提前声明未实现功能。
+本 README 描述的是 **aeromech-thesis v1.6.0** 当前已实现的能力。任何未来功能必须先实现并通过测试，再更新 README，不得为了宣传而提前声明未实现功能。
 
 如发现本文档与实际实现不一致，请以实际实现为准。欢迎反馈文档错误。
 
 ## 版本记录
 
+- v1.6.0 — Full-Stack Thesis Orchestration：thesis_state.py（StateIO 程序化迁移校验 + CK-XXX 检查点/SHA256 +
+  resume from_start=false + drift 检测）；material_ingestion.py（统一材料进入，SHA256 去重"不得重复读取"）；
+  school_requirements.py（字段级 provenance official/sample/default/unknown，PDF 规范不猜测）；
+  research_context.py（13 注册表只读聚合）；stage_routing.py（S1~S10 调度矩阵 + 交付五态判定，route 只判定）；
+  thesis_orchestrator.py（Action 模型 JSONL 禁止静默执行 + 五策略 Failure Recovery + Agent Loop 集成）；
+  figure_iface.py（FigureProvider 契约 + 生命周期 PLANNED→VERIFIED，不复制 Figure Engine）；
+  thesis_build.py（build-contract.yaml 七域 + 双模式组装 + 固定顺序 pipeline + artifact-manifest content_identity）；
+  delivery_gate.py（全证据域聚合五态终局，缺证据=BLOCK、ERROR 不透 PASS）；references/orchestration.md 规则总纲；
+  test-8.0 全栈冷启动验收（新校模板 TEMPLATE_FIDELITY、四断点恢复实测、隐藏缺陷自查含 2 项 DETECTION FAILED
+  修复复验、人工复核 7/7、delivery_gate=PASS）；修复 8 类根因缺陷（表体静默丢失/契约 tables 未接通/生命周期
+  TABLE 污染/封面检测器硬编码旧校口径/QA 章数附录数硬编码/COM 往返剥格式/正文级强断言与悬空图引用检测缺口/
+  HTML 实体残留）；tests/v1_6（14 文件 395 断言 + test_document_contract 文档=代码一致性锁）。
 - v1.5.0 — Research Intelligence & Agent Loop：design/scope/repairs 注册表；research_design.py（方法选择审计 +
   RF-01~10 可行性门禁）；research_diagnosis.py（19 类 issue_type 统一诊断+根因+auto/queue/block 分流+范围控制+数字一致性）；
   research_repair.py（REP 计划 + 白名单自动修复 + recompute 受控执行 + apply-human 裁决执行）；research_agent_loop.py

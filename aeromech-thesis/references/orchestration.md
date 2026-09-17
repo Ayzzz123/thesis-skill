@@ -1,11 +1,11 @@
-# Full-Stack Orchestration（v1.6.0 开发中·编排层规则总纲）
+# Full-Stack Orchestration（v1.6.0·编排层规则总纲）
 
 > 定位：把 v1.0~v1.5 的既有能力串成**完整、可恢复、可交付**的毕业论文 Agent。本层只负责
 > routing / state / coordination / checkpoint / recovery；研究判断（注册表/RQG/诊断/修复/Loop/评分）
 > 与格式/文档（Template Fidelity/QA 链/母版原语）一律复用既有模块，编排层零业务逻辑复制。
 > **规则真源 = 脚本实际行为**；本文与 `tests/v1_6/test_document_contract.py` 互为约束（文档写 A
 > 而代码是 B → 测试 FAIL）。适用对象：`.aeromech/` 工作区内的论文项目。
-> 状态：v1.6.0 为开发分支版本（`feature-1.6.0-full-stack-orchestration`），正式版本号 v1.5.0，
+> 状态：v1.6.0 已发布（2026-09-17，经 test-8.0 全栈冷启动 + 全回归 + 全 QA + 7/7 人工复核，delivery_gate=PASS）
 > 待 test-8.0 + 全回归 + 全 QA 全 PASS 后升级。
 
 ## 1. 分层与模块地图
