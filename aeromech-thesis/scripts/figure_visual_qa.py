@@ -131,20 +131,34 @@ def _content_bbox(meta):
 
 # ---------------- VIS 检查 ----------------
 def vis_01_layout_balance(rep, key, meta):
-    bb = _content_bbox(meta)
+    """平衡=主内容重心。chart 类以 axes_rect 为视觉主体（刻度/轴标题是结构性边饰，
+    不计入重心）；diagram 类以 boxes 并集为准（note 等 __note__ 页边注不计）。
+    两者皆无 → 退回全 texts bbox。"""
     W, H = meta.get("w_cm", 16.5), meta.get("h_cm", 8)
+    if meta.get("axes_rect"):
+        ax0, ay0, ax1, ay1 = meta["axes_rect"]
+        bb = (ax0, ay0, ax1, ay1)
+    else:
+        boxes = meta.get("boxes") or []
+        if boxes:
+            bb = (min(b["x"] for b in boxes), min(b["y"] for b in boxes),
+                  max(b["x"] + b["w"] for b in boxes),
+                  max(b["y"] + b["h"] for b in boxes))
+        else:
+            bb = _content_bbox(meta)
     if not bb:
-        rep.add("VIS-01", "Layout Balance", SKIP, "none", key, "无 box/text 几何数据")
+        rep.add("VIS-01", "Layout Balance", SKIP, "none", key, "无 axes_rect/box 几何数据")
         return
     x0, y0, x1, y1 = bb
     cx, cy = (x0 + x1) / 2, (y0 + y1) / 2
     dev_x = abs(cx - W / 2) / W
     dev_y = abs(cy - H * 0.52) / H          # 光学中心略偏上
-    lr = (x0) / max(0.1, W - x1) if (W - x1) > 0.05 else 9.9 if x0 > 0.05 else 1.0
-    ok = dev_x <= 0.08 and dev_y <= 0.10 and (0.5 <= lr <= 2.0 if lr != 9.9 else False)
+    right = W - x1
+    lr = x0 / right if right > 0.05 else (9.9 if x0 > 0.05 else 1.0)
+    ok = dev_x <= 0.08 and dev_y <= 0.10 and 0.5 <= lr <= 2.0
     rep.add("VIS-01", "Layout Balance", PASS if ok else WARN,
             "medium" if not ok else "none", key,
-            f"重心偏移 x={dev_x:.2f} y={dev_y:.2f} 左右留白比={lr if lr!=9.9 else 'N/A'}"
+            f"重心偏移 x={dev_x:.2f} y={dev_y:.2f} 左右留白比={lr if lr != 9.9 else 'N/A'}"
             + ("" if ok else "（超出平衡带）"),
             "" if ok else "将内容整体向重心偏移反方向平移，或重排子树使左右视觉重量接近")
 
@@ -188,14 +202,29 @@ def vis_03_typography(rep, key, meta, scale=1.0):
                            if bad_size else "字号改用 figure_style.TYPOGRAPHY.scale 档位"))
 
 
+def _all_colors(meta):
+    """boxes(fill/stroke) + chart bars/lines color + note/text 声明色 → 全图色集合。"""
+    hexes = []
+    for b in meta.get("boxes") or []:
+        hexes += [v for v in (b.get("fill"), b.get("stroke")) if v]
+    for bar in meta.get("bars") or []:
+        if bar.get("color"):
+            hexes.append(bar["color"])
+    for ln in meta.get("lines") or []:
+        if ln.get("color"):
+            hexes.append(ln["color"])
+    return hexes
+
+
 def vis_04_color_harmony(rep, key, meta):
-    hexes = [v for b in meta.get("boxes") or [] for v in (b.get("fill"), b.get("stroke")) if v]
+    hexes = _all_colors(meta)
     if not hexes:
         rep.add("VIS-04", "Color Harmony", SKIP, "none", key, "无颜色元数据（非 figkit 源）")
         return
     pal = ST.COLOR_PALETTE
     unknown = sorted({h for h in hexes if h not in pal.values()})
     fills = {h for b in meta.get("boxes") or [] if (h := b.get("fill")) and h != pal["bg"]}
+    fills |= {bar["color"] for bar in meta.get("bars") or [] if bar.get("color")}
     hues = {ST.hue_of(h)[0] // 60 for h in fills}
     oversat = [h for h in hexes if ST.saturation(h) >
                (ST.STYLE_THRESHOLDS["saturation_max_accent"]
@@ -210,7 +239,8 @@ def vis_04_color_harmony(rep, key, meta):
         probs.append(f"过饱和 {oversat[:3]}")
     rep.add("VIS-04", "Color Harmony", PASS if not probs else FAIL,
             "high" if unknown else "medium", key,
-            f"填充底 {len(fills)} 种/色相 {len(hues)}" + ("；" + "，".join(probs) if probs else "（白名单内、低饱和）"),
+            f"填充/系列色 {len(fills)} 种/色相 {len(hues)}"
+            + ("；" + "，".join(probs) if probs else "（白名单内、低饱和）"),
             "" if not probs else "全部颜色改从 figure_style.COLOR_PALETTE 取；合并同族色相")
 
 
@@ -222,7 +252,13 @@ def vis_05_contrast(rep, key, meta):
             c = ST.contrast_ratio(tc, fill)
             if c < ST.STYLE_THRESHOLDS["text_on_fill_min"]:
                 bad.append(f"{b.get('id')} {c:.2f}")
-    if not any(b.get("text_color") for b in meta.get("boxes") or [{}]):
+    # chart 类：系列色（柱描边/折线）对 bg 的非文本对比 ≥3.0（灰线/浅色不可见防线）
+    series_cols = [bar.get("color") for bar in meta.get("bars") or []] + \
+                  [ln.get("color") for ln in meta.get("lines") or []]
+    for h in {c for c in series_cols if c}:
+        if ST.contrast_ratio(h, ST.COLOR_PALETTE["bg"]) < ST.STYLE_THRESHOLDS["border_on_bg_min"]:
+            bad.append(f"系列色 {h} on bg {ST.contrast_ratio(h, ST.COLOR_PALETTE['bg']):.2f}<3.0")
+    if not any(b.get("text_color") for b in meta.get("boxes") or [{}]) and not series_cols:
         rep.add("VIS-05", "Contrast", SKIP, "none", key, "无文字/底色配对元数据")
         return
     rep.add("VIS-05", "Contrast", PASS if not bad else FAIL,
@@ -268,6 +304,7 @@ def vis_07_whitespace(rep, key, meta):
         return
     m = ST.SPACING["figure_margin"]
     x0, y0, x1, y1 = bb
+    # 画布坐标 y 轴向上（figkit set_ylim(0,H)）：上边距=H-y1，下边距=y0。
     viol = []
     if x0 < m - 1e-6: viol.append(f"左 {x0:.2f}<{m}")
     if y0 < m - 1e-6: viol.append(f"下 {y0:.2f}<{m}")
@@ -305,7 +342,7 @@ def vis_09_academic_style(rep, key, meta, png):
     """禁项检测：渐变/阴影/3D 在 layout 模型里不存在对应图元——
     能机检的是：全部填充为白名单纯色（无图元级 alpha 阴影）、线宽统一。
     主观"像不像海报"不可靠机检 → NHR。"""
-    hexes = [v for b in meta.get("boxes") or [] for v in (b.get("fill"), b.get("stroke")) if v]
+    hexes = _all_colors(meta)
     nonpal = [h for h in hexes if h not in ST.COLOR_PALETTE.values()]
     if not hexes:
         rep.add("VIS-09", "Academic Style", NHR, "medium", key,

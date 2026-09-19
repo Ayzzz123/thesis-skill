@@ -1,0 +1,22 @@
+{
+ "version": "v1.6.5",
+ "style_source": "figure_style",
+ "samples": [
+  {
+   "name": "golden_fault_tree",
+   "type": "fault_tree"
+  },
+  {
+   "name": "golden_stat_bar",
+   "type": "stat_bar"
+  },
+  {
+   "name": "golden_tech_route",
+   "type": "tech_route"
+  },
+  {
+   "name": "golden_stat_line",
+   "type": "stat_line"
+  }
+ ]
+}

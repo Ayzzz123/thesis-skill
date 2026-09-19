@@ -69,12 +69,13 @@ TYPOGRAPHY = {
     "family_cjk": "SimHei",            # 中文（黑体族，与论文宋体正文区分但全图系统一）
     "family_latin": "Times New Roman",  # 西文/数字（与正文配套）
     "fallback_chain": ["SimHei", "Microsoft YaHei", "DejaVu Sans"],
-    "scale": {                          # 字阶（生成 pt）
-        "XL": 13.0,   # 图内主标题/顶事件
-        "L": 12.0,    # 节点主标签/轴标题
-        "M": 11.0,    # 常规节点/刻度
-        "S": 10.0,    # 图例/数值标签
-        "XS": 9.5,    # 注释/note（绝对底线 9.0，SKILL 18.3）
+    "scale": {                          # 字阶（生成 pt；full_width 显示缩放 0.873 后
+                                        # 最小档 XS 有效=10.5×0.873≈9.17 ≥9.0 底线）
+        "XL": 14.0,   # 图内主标题/顶事件
+        "L": 12.5,    # 节点主标签/轴标题
+        "M": 11.5,    # 常规节点/刻度
+        "S": 11.0,    # 图例/数值标签
+        "XS": 10.5,   # 注释/note（有效≈9.2pt，底线 9.0，SKILL 18.3）
     },
     "min_effective_pt": 9.0,
     "caption_pt": 10.5,                 # 题注（docx 层，宋体，与表题统一）
@@ -209,6 +210,10 @@ def validate_palette():
         if grayscale_delta(P["fill"], P[tint]) < T["adjacent_fill_gray_min"]:
             bad.append(f"fill vs {tint} gray {grayscale_delta(P['fill'], P[tint]):.3f}"
                        f"<{T['adjacent_fill_gray_min']}")
+    # fill 必须与白底可分（否则"节点有底"退化为无底——COL-04 负例暴露的盲区）
+    if grayscale_delta(P["fill"], P["bg"]) < T["adjacent_fill_gray_min"]:
+        bad.append(f"fill vs bg gray {grayscale_delta(P['fill'], P['bg']):.3f}"
+                   f"<{T['adjacent_fill_gray_min']}（填充底与白底不可分）")
     for k in ("fill", "fill_alt", "primary", "secondary", "neutral", "text",
               "line", "grid", "muted", "success", "success_tint"):
         if saturation(P[k]) > T["saturation_max_neutral"]:

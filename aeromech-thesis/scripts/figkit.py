@@ -42,6 +42,7 @@ class Fig:
         self.boxes = []
         self.edges = []
         self.texts = []
+        self._text_records = []   # v1.6.5：显式初始化（chart 类可在首个 box 前记录文本）
 
     @staticmethod
     def _role_colors(role, fc, ec):
@@ -136,8 +137,21 @@ class Fig:
                      linestyle=ls, shrinkA=0, shrinkB=0))
         self.edges.append({"id": eid, "pts": [[p[0], p[1]] for p in pts]})
 
-    def save(self, outdir, name, min_font, layers=None):
-        """渲染 PNG 并输出 layout JSON（文本 bbox 经 renderer 实测换算为 cm）。"""
+    def polyline(self, eid, pts, color=None, ls="-", lw=None, marker=None):
+        """数据折线（无箭头，v1.6.5 line chart 用）；颜色默认 series_main。"""
+        ax = self.ax
+        color = color or ST.get_semantic_color("series_main", "stroke")
+        ax.plot([p[0] for p in pts], [p[1] for p in pts], ls=ls,
+                lw=lw or ST.LINE_STYLES["width"], color=color,
+                marker=marker, markersize=4 if marker else None,
+                solid_capstyle="round")
+        self.edges.append({"id": eid, "pts": [[p[0], p[1]] for p in pts],
+                           "kind": "polyline"})
+
+    def save(self, outdir, name, min_font, layers=None, extra_meta=None):
+        """渲染 PNG 并输出 layout JSON（文本 bbox 经 renderer 实测换算为 cm）。
+        extra_meta：chart 类元数据（axes_rect/bars/y_labels/value_labels/x_labels…）
+        原样并入 layout JSON，供 GQ chart 检查与 VIS 使用。"""
         fig = self.fig
         fig.canvas.draw()
         rend = fig.canvas.get_renderer()
@@ -151,9 +165,13 @@ class Fig:
             (X1, Y1) = inv.transform((bb_px.x1, bb_px.y1))
             texts.append({"box": bid, "x0": round(X0, 3), "y0": round(Y0, 3),
                           "x1": round(X1, 3), "y1": round(Y1, 3), "fs": fs})
+        # v1.6.5：min_font_pt 以**实测**为准（texts 里真实出现的最小字号），
+        # 调用方声明值仅作下限保护（两者取大＝不谎报更小、也不放过实际更小）。
+        measured = min((t["fs"] for t in texts), default=min_font)
+        min_font_pt = max(min(measured, min_font), 0) if texts else min_font
         meta = {"name": name, "w_cm": W, "h_cm": self.h, "dpi": dpi,
                 "boxes": self.boxes, "edges": self.edges, "texts": texts,
-                "min_font_pt": min_font, "layers": layers or {},
+                "min_font_pt": min_font_pt, "layers": layers or {},
                 # v1.6.5：样式指纹（VIS-12 跨图一致性机检输入）——本图实际使用的
                 # 字族/色板/线宽来源均为 figure_style 单一来源，指纹一致=同一视觉家族。
                 "style_fingerprint": {
@@ -165,6 +183,12 @@ class Fig:
                     "line_width": ST.LINE_STYLES["width"],
                     "style_source": "figure_style",
                 }}
+        if extra_meta:
+            meta.update(extra_meta)   # chart 元数据（axes_rect/bars/labels）并入
+            meta["style_fingerprint"]["palette_hex_used"] = sorted(
+                set(meta["style_fingerprint"]["palette_hex_used"])
+                | {b.get("color") for b in meta.get("bars") or [] if b.get("color")}
+                | {ln.get("color") for ln in meta.get("lines") or [] if ln.get("color")})
         png = os.path.join(outdir, name + ".png")
         fig.savefig(png, dpi=dpi)
         final_dir = os.path.join(outdir, "final")
