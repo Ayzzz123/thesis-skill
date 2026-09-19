@@ -223,6 +223,7 @@ class LocalProvider(FigureProvider):
                 kind, source = "script", os.path.relpath(script, root).replace("\\", "/")
             out.append({"figure_id": fid, "name": it.get("name", fid), "kind": kind,
                         "source": source, "out": os.path.relpath(png, root).replace("\\", "/"),
+                        "type": it.get("type"),   # v1.6.5：图类型分派（VIS-11 输入）
                         "related_rqs": it.get("related_rqs") or [],
                         "related_analyses": it.get("related_analyses") or [],
                         "related_claims": it.get("related_claims") or []})

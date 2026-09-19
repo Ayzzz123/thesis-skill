@@ -64,6 +64,7 @@ FORMAT_REPORTS = [
     ("page-fidelity-report.md", "page", None),
     ("figure-table-report.md", "figure_table", None),
     ("graph-quality-report.md", "graph", None),
+    ("figure-visual-report.md", "figure_visual", None),   # v1.6.5 VIS-01~12（几何过≠视觉过）
     ("table-readability-report.md", "table", None),
     ("content-purity-report.md", "content_purity", None),
 ]
@@ -77,7 +78,8 @@ STEP_DOMAINS = [
     ("finalize", "finalize", "high"),
 ]
 ITEM_RE = re.compile(
-    r"^- (.+?)[:：] ?(PASS|FAIL|SKIP|NOT_APPLICABLE|SKIPPED_WITH_REASON) ?\| ?(.*)$")
+    r"^- (.+?)[:：] ?(PASS|FAIL|SKIP|NOT_APPLICABLE|SKIPPED_WITH_REASON"
+    r"|NEEDS_HUMAN_REVIEW|WARN) ?\| ?(.*)$")
 
 
 def parse_format_report(path, domain):
@@ -101,14 +103,24 @@ def parse_format_report(path, domain):
         return None
     fails = [(c, e) for c, st, e in items if st == "FAIL"]
     nas = [c for c, st, e in items if st == "NOT_APPLICABLE"]
+    nhrs = [c for c, st, e in items if st == "NEEDS_HUMAN_REVIEW"]
+    warns = [c for c, st, e in items if st == "WARN"]
+    # 域终局（与全局聚合规则同序：ERROR>Critical/High FAIL(BLOCK)>NHR>WARN>PASS）：
+    # 存在未裁决 NHR / WARN 项时不得记 PASS（v1.6.5：figure_visual 会产出这两态，
+    # 旧实现把它们当不匹配行静默丢弃→假 PASS 泄漏）。
     if fails:
         status = "FAIL"
     elif len(nas) == len(items):
         status = "NOT_APPLICABLE"
+    elif nhrs:
+        status = "PASS_WITH_HUMAN_REVIEW"
+    elif warns:
+        status = "PASS_WITH_WARNINGS"
     else:
         status = "PASS"
     return {"domain": domain, "status": status,
             "failures": [{"code": c, "evidence": e[:140]} for c, e in fails],
+            "needs_human_review": nhrs, "warnings": warns,
             "not_applicable": nas, "evidence": [path], "checks": len(items)}
 
 
@@ -200,6 +212,14 @@ def aggregate(root, write=False):
         elif rep["status"] == "ERROR":
             add(f"G-FMT-{domain}", domain, "ERROR", "critical", rep["evidence"],
                 rep.get("reason", "报告损坏"), REMEDIATION["error"])
+        elif rep["status"] == "PASS_WITH_HUMAN_REVIEW":
+            add(f"G-FMT-{domain}", domain, "NEEDS_HUMAN_REVIEW", "high", rep["evidence"],
+                f"{len(rep.get('needs_human_review', []))}/{rep['checks']} 项待人工视觉复核: "
+                + ", ".join(rep.get("needs_human_review", [])[:6]), REMEDIATION["nhr"])
+        elif rep["status"] == "PASS_WITH_WARNINGS":
+            add(f"G-FMT-{domain}", domain, "WARN", "medium", rep["evidence"],
+                f"{len(rep.get('warnings', []))}/{rep['checks']} 项 WARN: "
+                + ", ".join(rep.get("warnings", [])[:6]), "")
         else:
             add(f"G-FMT-{domain}", domain, "PASS", "none", rep["evidence"],
                 f"{rep['checks']} 项通过"

@@ -209,10 +209,10 @@ def main():
     import figkit
     g = figkit.Fig(6.0)
     g.box("B", 1, 1, 3, 1, ["测试 Test 100 MPa"], role="top_event")
-    g.save(tmp, "intg", min_font=99)   # 故意虚报 99 → 实测应为 11.5
+    g.save(tmp, "intg", min_font=99)   # 故意虚报 99 → 实测应为该框实际字号（M 档）
     meta = json.load(open(os.path.join(tmp, "intg.layout.json"), encoding="utf-8"))
     check("INT-01 min_font 以实测为准（声明造假被纠正）",
-          meta["min_font_pt"] == 11.5, str(meta["min_font_pt"]))
+          meta["min_font_pt"] == ST.TYPOGRAPHY["scale"]["M"], str(meta["min_font_pt"]))
     b0 = meta["boxes"][0]
     check("INT-02 layout 输出 fill/stroke/role/fingerprint",
           all(k in b0 for k in ("fill", "stroke", "role"))

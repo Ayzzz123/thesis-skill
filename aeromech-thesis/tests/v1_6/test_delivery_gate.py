@@ -297,6 +297,38 @@ def main():
     FI.record(r9, "FIG-001", "VALIDATED", reason="修复后复检通过")
     check("图修复后 figure 域回 PASS", DG.aggregate(r9)["status"] == "PASS")
 
+    # ---------- GATE-11（v1.6.5）：格式报告 WARN/NEEDS_HUMAN_REVIEW 行不得被静默丢弃 ----------
+    # 旧 parse_format_report 的 ITEM_RE 不含 WARN/NHR → 行被丢 → 域假 PASS（泄漏）。
+    # figure_visual 域会产出这两态，必须先修解析再入链。
+    rA = full_pass_env(F.make_project(os.path.join(tmp, "visnhr"), with_template=False))
+    qa_file(rA, "figure-visual-report.md", base_report([
+        ("VIS-01 Layout Balance", "PASS", "ok"),
+        ("VIS-09 Academic Style", "NEEDS_HUMAN_REVIEW", "非 figkit 源交人工"),
+        ("VIS-02 Density", "PASS", "ok")]))
+    resA = DG.aggregate(rA)
+    itA = domains(resA).get("G-FMT-figure_visual")
+    check("GATE-11 视觉报告 NHR 行→域 NEEDS_HUMAN_REVIEW（不静默 PASS）",
+          itA and itA["status"] == "NEEDS_HUMAN_REVIEW", str(itA and itA["status"]))
+    check("GATE-11 NHR 域→终局 PASS_WITH_HUMAN_REVIEW",
+          resA["status"] == "PASS_WITH_HUMAN_REVIEW", resA["status"])
+    rB = full_pass_env(F.make_project(os.path.join(tmp, "viswarn"), with_template=False))
+    qa_file(rB, "figure-visual-report.md", base_report([
+        ("VIS-01 Layout Balance", "WARN", "留白比 0.3"),
+        ("VIS-02 Density", "PASS", "ok")]))
+    resB = DG.aggregate(rB)
+    check("GATE-11 WARN 行→域 WARN→终局 PASS_WITH_WARNINGS（不冒充 PASS）",
+          domains(resB)["G-FMT-figure_visual"]["status"] == "WARN"
+          and resB["status"] == "PASS_WITH_WARNINGS",
+          resB["status"])
+    rC = full_pass_env(F.make_project(os.path.join(tmp, "visfail"), with_template=False))
+    qa_file(rC, "figure-visual-report.md", base_report([
+        ("VIS-03 Typography", "FAIL", "有效字号 8pt"),
+        ("VIS-01 Layout Balance", "NEEDS_HUMAN_REVIEW", "x")]))
+    resC = DG.aggregate(rC)
+    check("GATE-11 FAIL 优先于 NHR（Critical 不被掩盖）→BLOCK",
+          resC["status"] == "BLOCK"
+          and domains(resC)["G-FMT-figure_visual"]["status"] == "FAIL")
+
     shutil.rmtree(tmp, ignore_errors=True)
     print(f"test_delivery_gate 结果: PASS={PASS} FAIL={FAIL}")
     return 1 if FAIL else 0

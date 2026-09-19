@@ -722,6 +722,13 @@ def pipeline(root, steps=None):
             chain.append(("graph_quality", [py, os.path.join(SCRIPTS, "graph_quality_qa.py"),
                                             "--docx", abs_docx, "--pdf", abs_pdf,
                                             "--figdir", figdir, "--out", qa_out], pdf_ok))
+            # v1.6.5：视觉 QA（VIS-01~12）——几何过 ≠ 视觉过，独立域入链；
+            # --plan 提供图类型（VIS-11 输入），缺省则类型项 SKIP。
+            _plan = os.path.join(root, ".aeromech", "figures", "figure-plan.yaml")
+            chain.append(("figure_visual", [py, os.path.join(SCRIPTS, "figure_visual_qa.py"),
+                                            "--figdir", figdir, "--pdf", abs_pdf,
+                                            *(["--plan", _plan] if os.path.isfile(_plan) else []),
+                                            "--out", qa_out], pdf_ok))
         for name, cmd, needed in chain:
             if not needed:
                 log_step({"step": name, "status": "SKIPPED_WITH_REASON",
