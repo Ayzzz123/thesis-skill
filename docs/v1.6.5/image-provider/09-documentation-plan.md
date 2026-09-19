@@ -20,6 +20,10 @@
 13. Local Provider（确定性图默认路径；与 AI 的分工表——引用 06 文档路由表）
 14. AI Image 与 Research Evidence 的区别（红线清单：AI 图不能证明什么；
     【AI 生成示意图】题注要求；ai_generated_visual 证据类型语义）
+15. 受控生成（Figure Plan 前置九字段、结构化 prompt 模板、语义 QA 幻觉九检、
+    示意性标识规范、工程主题限制、评价顺序、三条硬约束——见 10 文档）
+16. Fallback 语义（外部未配置/无后端→回落既有管线；调用失败→不自动降级；
+    NEEDS_CONFIGURATION 唯一条件=显式 mandatory；任何 provider 缺席不阻塞）
 ```
 
 ## 2. 既有文档接线（小改，不重写）
@@ -27,7 +31,7 @@
 | 文件 | 改动 |
 |---|---|
 | SKILL.md | 加载表 +1 行（Image Provider → references/image-provider.md）；§21 要点补"provider 路由四路径"一段；§18.3 图形规则加一句"AI 图不降低 VIS 门槛" |
-| references/orchestration.md | 矩阵 S8 行：AI 挂载点说明（provider=image 时经 image_config，缺失→NHR 非 BLOCK）；CLI 速查表加 image 子命令 |
+| references/orchestration.md | 矩阵 S8 行：AI 挂载点说明（provider=image 时经 image_config，**缺失→自动回落既有管线：既不 BLOCK 也不 fake PASS**）；CLI 速查表加 image 子命令 |
 | references/agents/figure.md | 步骤2 规划表加 `provider` 列；新增"§路由：何时用 AI/何时必须 local"（指向 image-provider.md §13） |
 | references/delivery-pipeline.md | §8.5 gate 域清单加 G-SEC-01（secret 泄漏）与 figure_visual 已有域的说明 |
 | README.md | §11 当前版本段补一句 v1.6.5 图形系统（视觉系统 + 用户级 Image Provider） |

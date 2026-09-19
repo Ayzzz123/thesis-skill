@@ -29,7 +29,10 @@ figure_iface.FigureProvider  ← 既有契约（plan/generate/validate + 生命�
 - `ImageModelProvider` 是 `FigureProvider` 的子类（F1）：
   - `plan()`：委托 LocalProvider 推导（同一注册表），对 `provider=image` 的条目保留；
   - `generate()`：调 backend → 成功则写 artifact + `record(GENERATED, provider_meta=…)`；
-    未配置/失败按 §八/§十七 分类返回，**不落任何占位图**（与 v1.6.5 D2 修复同一纪律）；
+    **外部能力不可用（未配置/无后端）→ 自动回落 LocalProvider 生成**（lifecycle 记
+    `fallback_from=external_unavailable`，这是路由行为不是造假）；调用失败（网络/审核/
+    模型错误）→ 按 §十七 分类 REJECTED/NHR，**不落占位图、不假 AI 效果**（D2 纪律延续）；
+    调用前必须过受控闸（10 文档：无 Figure Plan 禁外部调用）；
   - `validate()`：复用研究链接硬关卡；AI 位图无 figkit layout → 几何 SKIP、
     `figure_visual_qa` VIS-02/09/10 像素级 + 人工 NHR（既有语义，不另造）。
 
@@ -37,9 +40,9 @@ figure_iface.FigureProvider  ← 既有契约（plan/generate/validate + 生命�
 
 | 接缝 | 机制 | 新增行为 |
 |---|---|---|
-| 生命周期 | PLANNED→GENERATED→VALIDATED→EMBEDDED→VERIFIED / REJECTED / NEEDS_HUMAN_REVIEW【KEEP】 | GENERATED 记录附 `provider_meta`（见 §3）；未配置→NHR + 结构化 reason 码 |
+| 生命周期 | PLANNED→GENERATED→VALIDATED→EMBEDDED→VERIFIED / REJECTED / NEEDS_HUMAN_REVIEW【KEEP】 | GENERATED 记录附 `provider_meta`（见 §3）；外部未配置→**自动回落 Local 生成（正常生命周期+回落标记）**，不 NHR；NHR 仅两态：显式 mandatory→NEEDS_CONFIGURATION、语义/视觉复核 |
 | build EMBEDDED | thesis_build 在占位行命中时 record【KEEP】 | 不感知 provider/key |
-| gate G-FIG-01 | REJECTED→critical、NHR→high【KEEP】 | 无改动；IMAGE_PROVIDER_NOT_CONFIGURED 的图自然停在 NHR，**交付门禁不放行未配置图**（防"没 Key 也交付"） |
+| gate G-FIG-01 | REJECTED→critical、NHR→high【KEEP】 | 无改动；**回落 Local 生成的图照常过全部 QA→PASS，交付不因"没 Key"受阻**（§七/§十四；原"未配置图停在 NHR 不放行"设计废除） |
 | figure_visual | VIS-01~12【KEEP】 | AI 图同样过（尤其 VIS-09 禁项：渐变/阴影滥用恰是 AI 图常见病） |
 | research traceability | 种子=E/DS/CALC/M【KEEP】 | 见 §4 守卫 |
 
@@ -88,6 +91,7 @@ scripts/image_providers/base.py     NEW 抽象+错误分类学（§十七 九类
 scripts/image_providers/openai_images.py / gemini_images.py / openai_compat.py / host_native.py
 scripts/image_cli.py                NEW  aeromech image config|test|status
 scripts/secret_leak_qa.py           NEW  全表面泄漏扫描
+scripts/ai_figure_gate.py           NEW  Figure Plan 前置闸 + 结构化 prompt + 语义 QA（10 文档）
 scripts/figure_iface.py             REFACTOR record() redact + provider_meta + 注册 ImageModelProvider
 scripts/research_integrity.py       REFACTOR source_type 枚举 + DISGUISE 扩展
 scripts/research_quality_qa.py      REFACTOR RQG-16（AI 图证据守卫）
@@ -100,6 +104,7 @@ tests/v1_6_5/test_image_provider_*.py  NEW  四测试文件（08 计划）
 ## 7. 设计红线（对齐任务 §一/§八/§十五/§二十一）
 
 - Skill 仓库零真实 Key、零默认 Key、零共享 Key（§一）
-- 无 Key → 明确 NHR/NEEDS_CONFIGURATION，绝不 fake image PASS（§八）
+- 无 Key → 自动回落既有管线继续生成并照常过 QA（§七/§十四）；NEEDS_CONFIGURATION
+  仅当用户显式要求必须外部；任何情况下绝不 fake 图 PASS
 - AI 图永不自动成为实验数据/测量/故障率/文献事实（§十五）
 - 本设计阶段不写实现、不 push/merge/PR/release（§二十一）

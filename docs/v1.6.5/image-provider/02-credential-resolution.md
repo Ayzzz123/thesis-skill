@@ -19,8 +19,10 @@ IMAGE_ALLOW_PROJECT_ENV = 0   # 项目级 .env 默认禁用（§三 风险评估
 ```
 
 解析规则：
-- `resolve_backend()`：取 `IMAGE_BACKEND`；未设→`IMAGE_PROVIDER_NOT_CONFIGURED`
-  （不猜默认后端、更不猜 Key）。
+- `resolve_backend()`：取 `IMAGE_BACKEND`；未设→返回 `unavailable`（**正常状态不是错误**：
+  调用方自动回落既有 Figure Pipeline，§七/§十四）；不猜默认后端、更不猜 Key。
+  仅当调用方声明 `required=True`（用户显式 `provider_required: external`）才报
+  `IMAGE_PROVIDER_NOT_CONFIGURED`→NEEDS_CONFIGURATION。
 - `resolve_credential(backend)`：只认 `<BACKEND>_API_KEY` 一个键；缺失→
   `MISSING_CREDENTIAL`（错误分类学见 04 文档）。
 - `resolve_model/base_url(backend)`：`<BACKEND>_MODEL` 有默认建议值（非敏感，可内置，
@@ -82,6 +84,9 @@ Fingerprint: sha256:1a2b3c4d      # Key 的哈希前 8 位——可比较"是不
 Connection: OK | AUTH_FAILED | NETWORK_ERROR | RATE_LIMIT | …（分类见 04）
 ```
 - 任何模式都不输出长度、前缀、后缀、掩码字符串（连 `sk-…abcd` 都不要——指纹已够）。
+- `aeromech image test` 未配置时：**不算失败**（exit 0），输出
+  "No external image provider configured. Existing figure generation remains available."
+  （§十一）；
 - `aeromech image status`：列出所有已检测后端（configured/not-configured），无值。
 - `aeromech image config`：交互式写入 `~/.aeromech/.env`（0400 权限建议 + Windows
   提示），Key 输入不回显（`getpass`），写完立即 `redact` 自检。

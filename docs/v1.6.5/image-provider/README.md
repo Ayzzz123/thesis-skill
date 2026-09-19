@@ -5,6 +5,14 @@
 provider-specific 配置 + 环境优先级），未复制其任何代码；与本项目
 Figure Provider / Research Integrity / Agent Loop 深度结合。
 
+> **修订 v2（2026-09-19，两次补充要求合并）**：
+> ① **外部 Image API = 可选增强，不是强制依赖**：未配置/无后端 → 自动回落
+>    既有 Figure Pipeline（figkit/mermaid/host-native/user_asset），**绝不 BLOCK**；
+>    原设计“未配置→NHR→gate 不放行”语义全部废除（§七/§十四）。
+> ② **AI 生图 = 受控的论文图形生成，不是自由创作**：必须有 Figure Plan 前置、
+>    结构化 prompt、生成后语义 QA（幻觉九检）、示意性标识、确定性图禁用 AI。
+>    详见 10-controlled-ai-figure-generation.md。
+
 ## 文档索引
 
 | 文件 | 内容 |
@@ -21,6 +29,7 @@ Figure Provider / Research Integrity / Agent Loop 深度结合。
 | image-provider/07-host-native.md | HOST_NATIVE_INTEGRATION（宿主原生生图零 Key 路径） |
 | image-provider/08-test-plan.md | TEST_PLAN（4 个测试文件 × 15 项必测 + 负例设计） |
 | image-provider/09-documentation-plan.md | DOCUMENTATION_PLAN（references/image-provider.md 目录 + 接线） |
+| image-provider/10-controlled-ai-figure-generation.md | CONTROLLED_AI_FIGURE_GENERATION（受控生成：Figure Plan 前置/结构化 prompt/语义 QA/标识/硬约束） |
 
 ## 审计事实（设计依据，全部可复核）
 
@@ -34,7 +43,7 @@ Figure Provider / Research Integrity / Agent Loop 深度结合。
 | F6 | provider 在 generate 时刻选择（CLI/plan 记录），EMBEDDED 由 build 统一记 | figure_iface.py:362-386；thesis_build.py:395-397 | 路由决策放 provider 层，build 不感知 key |
 | F7 | sync.py 已知安装目录解析（`~/.qoder-cn/skills/aeromech-thesis`，env 可覆盖） | sync.py:23,145 | "Skill 安装目录 .env" 路径可复用同一解析思想，但运行期脚本不能 import sync.py（仓库根文件）→ 用 `AEROMECH_HOME`+推导 |
 | F8 | ppt-master 模式（仅思想）：`IMAGE_BACKEND` + `<PROVIDER>_API_KEY`；先 process env 再**首个命中**的 .env（cwd→skill→repo→~/.ppt-master/.env）；`.env.example` 模板；`--list-backends` 发现 | 其 README（本次 WebFetch 摘要） | 采纳：backend 选择、provider-specific 前缀、首命中不合并、example 模板、无 Key 发现命令；调整：用户级目录名 `~/.aeromech/.env`、项目级 .env 降权并警告 |
-| F9 | 生命周期状态词表已固定七态，gate 的 G-FIG-01 按 REJECTED→critical、NHR→high 映射 | figure_iface.py:59-61；delivery_gate.py 图域 | "没配 Key" 不得新增状态词：用 **NEEDS_HUMAN_REVIEW + 结构化 reason 码**（IMAGE_PROVIDER_NOT_CONFIGURED）表达，gate 自然转 NHR，不 fake PASS |
+| F9 | 生命周期状态词表已固定七态，gate 的 G-FIG-01 按 REJECTED→critical、NHR→high 映射 | figure_iface.py:59-61；delivery_gate.py 图域 | "没配 Key" 不得新增状态词，**也不得 BLOCK/不得 NHR**：外部不可用→自动回落既有管线（正常生命周期，reason 记 `fallback_from=external_unavailable`），回落图照常过 QA→PASS；NHR 仅用于显式 `provider_required: external`（NEEDS_CONFIGURATION）或语义/视觉复核；绝不 fake PASS（§七/§十四） |
 | F10 | 自动重生成已有 loop 预算语义（v1.5 ≤5 轮；本次任务规定外部生图 max_generation_attempts=3） | SKILL §20/21 | 成本闸独立于 QA 重试：**按 figure_id 计外部 API 调用次数**，超限→NHR |
 
 ## KEEP / REFACTOR / NEW 总表
@@ -64,6 +73,9 @@ Figure Provider / Research Integrity / Agent Loop 深度结合。
 - `scripts/figure_iface.py` 内注册 `ImageModelProvider`（薄适配器：契约→image_providers）
 - `scripts/secret_leak_qa.py` —— 全表面扫描（git diff/staged/日志/artifacts/tests/reports），
   疑似真实 Key→BLOCK（§十/§十一）
+- `scripts/ai_figure_gate.py` —— 受控生成闸：Figure Plan 前置检查（无 plan→禁外部调用）、
+  结构化 prompt 组装（源=Plan+Research Context+注册表+素材，禁开放式）、生成后
+  语义 QA 幻觉九检→BLOCK/NHR（10 文档）
 - `aeromech image config|test|status` CLI 入口（`scripts/image_cli.py`，Key 不回显）
 - `references/image-provider.md` 文档 + SKILL 加载表/路由表接线
 - 测试：`tests/v1_6_5/test_image_provider_{config,resolution,security,integration}.py`
@@ -80,9 +92,11 @@ Figure Provider / Research Integrity / Agent Loop 深度结合。
    `.env.example`；机器 A/B 各读各的 `~/.aeromech/.env`，互不可见（§十三，测试 RES-13）。
 4. **防 Key 进 Git？** 四道：.gitignore 补条目（非唯一）→ secret_leak_qa 扫 diff/staged/
    产物 → record/log_action 边界 redact（源头不写入）→ 交付前 gate 域（SEC-01~05）。
-5. **没 Key 仍能用 Local？** 默认路由本就是 Local（确定性图全部本地）；AI 仅当 figure 显式
-   声明 `provider=image` 才走外部；未配置→`NEEDS_HUMAN_REVIEW` +
-   `IMAGE_PROVIDER_NOT_CONFIGURED` 码，**绝不 fake 图 PASS**（§八，06 文档）。
+5. **没 Key 仍能用吗？** 能——v1.6.5 核心兼容要求：未配置外部 =
+   `external_image_provider=unavailable` → **自动回落既有 Figure Pipeline**
+   （figkit/mermaid/host-native/user_asset 全可用），图形生成与交付照常，
+   **零阻塞零费用**；仅当用户显式 `provider_required: external` 且缺 Key 才返回
+   NEEDS_CONFIGURATION（§七/§八/§十四，06/10 文档）。
 6. **Host-native 接入？** `host_native.py` 不持 Key、不发 HTTP：返回
    `HOST_NATIVE_REQUESTED` 结构（prompt+尺寸+落盘路径），由 Agent Host 用原生能力生成后
    `figure_iface record` 补 artifact；无 host 能力时同样 NHR（07 文档）。
@@ -90,9 +104,9 @@ Figure Provider / Research Integrity / Agent Loop 深度结合。
    （`<BACKEND>_BASE_URL/<BACKEND>_API_KEY/<BACKEND>_MODEL`），qwen/zhipu/minimax/volcengine
    经同一 adapter 接入，新增厂商=加配置不加代码（04 文档 §端点矩阵）。
 8. **限制自动重生成的 API 成本？** 三重闸：`IMAGE_MAX_ATTEMPTS`（默认 3，按 figure_id 在
-   lifecycle 计数）超限→NHR；首次外部调用前一次性费用提示（CLI 与 agent 路径都有）；
-   orchestrator 重试策略对 `image` provider 禁 retry（05 文档 §成本闸）。
-9. **AI 图不成 research evidence？** 结构守卫：evidence 注册表 `source_type` 无
+   lifecycle 计数）超限→可本地类型回落 local、否则 NHR；首次外部调用前一次性费用提示
+   （CLI 与 agent 路径都有）；orchestrator 重试策略对 `image` provider 禁 retry（05 文档 §成本闸）。
+9. **AI 图不成 research evidence？** 受控前置（无 Figure Plan 禁调用，10 文档）+ 结构守卫：evidence 注册表 `source_type` 无
    `ai_generated_image` 值（新增枚举 `ai_generated_visual` 且 verification_status 强制
    `simulated` 同等待遇→RI-E-DISGUISE 自动禁伪装）；figures.yaml 记
    `generation_method: ai_image:<provider>` + prompt_hash；追踪性种子不变（F4）；

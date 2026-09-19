@@ -20,6 +20,8 @@ generation_method=ai_image → FAIL critical，"AI 图不得充当证据图"）�
 
 - 规划期（S8，Figure Agent）：按上表给 figures.yaml 条目写 `provider` + `type`；
 - 用户显式覆盖：contract/figures.yaml `provider: image`（人工决定，Agent 不推翻）；
+- 严格模式 `provider_required: external`（**默认不设**）：只有此模式下缺 Key 才
+  NEEDS_CONFIGURATION；默认模式缺 Key→自动回落 local（§十四"不阻塞"）；
 - build/generate 期零决策（只读 spec）——路由错误在 plan 期暴露，最便宜。
 
 ## 3. 与 v1.6.5 视觉系统的闭环
@@ -32,3 +34,11 @@ AI 图同样过：研究链接硬关卡（无 RQ/AN/CL 不得 validate 过）→
 
 路由表即第一道成本闸：绝大多数论文 80%+ 的图走 local=零 API 费；
 概念示意图通常 ≤2 张/篇 → 典型外部调用量个位数。
+
+## 5. 受控生成硬约束（v1.6.5 正式措辞，细则见 10 文档）
+
+- "AI Image Model 是**受控的 visual generation provider，不是自由内容生成器**。"
+- "论文中的 AI-generated visual 必须经过 **Figure Plan、研究边界、语义 QA、
+  视觉 QA 和 PDF QA**，才能进入最终交付物。"
+- "**能够通过确定性方法准确生成的研究图，不应使用 AI Image Model 替代。**"
+- 外部未配置 → 回落既有管线，任何 provider 的缺席不阻塞 Figure Pipeline。

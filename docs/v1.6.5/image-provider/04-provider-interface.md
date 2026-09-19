@@ -37,7 +37,7 @@ class ImageBackend:
 
 | code | 触发 | retryable | 生命周期映射 |
 |---|---|---|---|
-| MISSING_CREDENTIAL | resolve 无 `<B>_API_KEY` | 否 | NHR + `IMAGE_PROVIDER_NOT_CONFIGURED` |
+| MISSING_CREDENTIAL | resolve 无 `<B>_API_KEY` | 否 | **默认：回落既有管线（不是错误、不是 NHR）**；仅显式 mandatory→NEEDS_CONFIGURATION（§十四） |
 | INVALID_CREDENTIAL | 401/403 | 否 | REJECTED（配错 Key，需人修配置） |
 | NETWORK_ERROR | DNS/连接失败 | 是（≤3） | 重试后仍败→REJECTED |
 | RATE_LIMIT | 429 | 是（退避） | 超限→NHR（成本闸） |
@@ -72,9 +72,11 @@ volcengine → ark.cn-beijing.volces.com/api/v3 bearer
 
 ```
 1. spec.provider == "image"?  否→拒绝（路由错，交回 06 文档）
-2. resolve_backend() → backend 实例；未配置→NHR(MISSING_CREDENTIAL)
+2. resolve_backend() → 不可用→**自动回落 LocalProvider 生成**（reason 记
+   fallback_from=external_unavailable）；仅 spec.provider_required=="external"→
+   NHR(NEEDS_CONFIGURATION)
 3. attempts = count_external_calls(root, fid)   # lifecycle 里 provider_meta.backend 计数
-   if attempts >= IMAGE_MAX_ATTEMPTS(默认3) → NHR("成本闸：已达最大外部调用次数")
+   if attempts >= IMAGE_MAX_ATTEMPTS(默认3) → 可本地绘制类型回落 local；否则 NHR("成本闸")
 4. 首次外部调用前（该 root 无历史 image GENERATED）→ 打印费用提示（§十四）
 5. prompt = 组装（含 figure 的 caption/type/研究链接上下文，长度上限）
 6. backend.generate(...) → ImageError 按 §3 映射；成功→
@@ -87,9 +89,10 @@ volcengine → ark.cn-beijing.volces.com/api/v3 bearer
 - 注册名不同（`local`/`image`/`host_native`/`user_asset`），`get_provider` 按名取；
 - **默认永远 local**：未显式 `provider: image` 的图绝不走外部（省钱+确定性图更优）；
 - LocalProvider 代码路径零改动；测试 INT-03 证明加 image 后 local 全绿不变；
-- `image` provider 失败**不回退**到"画个假图"——失败就是失败（D2 纪律延续），
-  可回退到 local 的只有"该图本可由确定性方式画"的情形，且必须由 Agent 显式改
-  spec.provider 重 plan，不自动降级。
+- **两类失败严格区分（§七/§十四）**：①外部能力不可用（未配置/无后端）→
+  **自动回落 Local**（路由行为，lifecycle 记 fallback_from，图照常全量 QA）；
+  ②调用失败（网络/审核/模型错误）→ **不自动降级假 AI 效果**，失败就是失败
+  （REJECTED/NHR，D2 纪律），Agent 可显式改 spec 重 plan。共同底线：绝不假图假过。
 
 ## 7. UserAssetProvider（§八 第四路径）
 

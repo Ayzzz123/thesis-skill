@@ -34,9 +34,9 @@ BackendResult(ok=False, deferred=True, code="HOST_NATIVE_REQUESTED",
 ## 3. 为什么不用"检测到宿主就自动算成功"
 
 - 检测不到生成结果就记 GENERATED = 语义造假（v1.6.5 D2 同族红线）；
-- deferred→NHR 保证：**没有真图就没有真通过**，与 §八"没有 Key→fake image→PASS"
-  禁令一致；
-- 宿主若不提供生图，路径自然落空 → 用户改用 external provider 或 local 或 user_asset。
+- deferred→NHR（等待回执）保证：**没有真图就没有真通过**，绝不假成；
+- 宿主无生图能力/长时间未回执 → **自动回落 Local 管线**（§七/§十四：任何单一
+  provider 缺席不阻塞图形系统），也可由用户改选 external/user_asset。
 
 ## 4. 能力探测（可选，不依赖）
 

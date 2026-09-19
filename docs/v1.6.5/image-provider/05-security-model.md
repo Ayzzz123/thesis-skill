@@ -52,7 +52,7 @@ python secret_leak_qa.py <root> --scope repo|diff|deliverables|all [--strict]
 - `IMAGE_MAX_ATTEMPTS` 默认 3，**按 figure_id 累计外部调用**（lifecycle provider_meta.attempts），
   跨进程持久——重开终端不能"重置计数刷 API"。
 - 自动 regeneration（figure_visual FAIL→重生成）对 `provider=image` 的图：
-  attempts 达上限→NHR，**绝不静默第 4 次调用**。
+  attempts 达上限→**绝不静默第 4 次调用**；可本地绘制类型自动回落 local，否则 NHR。
 - 首次外部调用前一次性提示："将使用您配置的 Image Model API Key 调用外部服务，
   可能产生 API 费用。"（CLI 与 orchestrator 路径都打；`--yes` 跳过）。
 - QA 失败重试（v1.5 loop ≤5 轮）与成本闸**正交**：loop 轮次再少，单图外部调用也 ≤3。
