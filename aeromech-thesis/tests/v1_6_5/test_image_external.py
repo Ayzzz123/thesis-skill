@@ -383,6 +383,102 @@ def main():
               FAKE_KEY not in out and "Bearer " + FAKE_KEY not in out
               and "credential=sk-" not in out.replace("credential=" + IC.REDACTED, ""))
 
+        # IMG-GPT-05~09 响应解析器完整性（OpenAI-compatible 两种成功形态 + 三种失败形态；
+        # 全部离线 mock，零真实网络）
+        PNG_BYTES = b"\x89PNG\r\n\x1a\n" + b"0" * 3000
+        # CASE A: data[0].b64_json → 正常出图（既有行为回归，不改）
+        ba = IB.get_backend("openai", r.credential, model="gpt-image-2",
+                            base_url="https://api.test.local/v1")
+        ba._http, ca = mock_transport((200, {"data": [{"b64_json": PNG_MIN}]}))
+        art_a = os.path.join(tmp, "caseA.png")
+        blob_a = ba.generate("p", out_path=art_a)
+        check("IMG-GPT-05 CASE A b64_json → 图片字节+artifact 落盘",
+              blob_a[:4] == b"\x89PNG" and os.path.isfile(art_a))
+        # CASE B: data[0].url → parser 识别 url 并经注入 fetcher 取回（不真实下载）
+        bb = IB.get_backend("openai", r.credential, model="gpt-image-2",
+                            base_url="https://api.test.local/v1")
+        bb._http, cb = mock_transport((200, {"data": [
+            {"url": "https://example.test/image.png"}]}))
+        o_fetch, fetched = IB._fetch_url_bytes, []
+
+        def _fake_fetch(u, t):
+            fetched.append(str(u))
+            return 200, PNG_BYTES
+        IB._fetch_url_bytes = _fake_fetch
+        try:
+            blob_b = bb.generate("p")
+        finally:
+            IB._fetch_url_bytes = o_fetch
+        check("IMG-GPT-06 CASE B url 形态 → 识别并取回字节（GET 产物，非新生成）",
+              blob_b == PNG_BYTES and fetched == ["https://example.test/image.png"])
+        # url 下载请求不得携带 Authorization（URL host 可能是第三方 CDN）
+        captured = {}
+
+        def _cap_urlopen(req, timeout=None):
+            captured["hdrs"] = {k.lower() for k, _v in req.header_items()}
+
+            class _R2:
+                status = 200
+
+                def __enter__(self):
+                    return self
+
+                def __exit__(self, *a):
+                    return False
+
+                def read(self):
+                    return PNG_BYTES
+            return _R2()
+        o_uo2 = IB.urllib.request.urlopen
+        IB.urllib.request.urlopen = _cap_urlopen
+        try:
+            st2, blob2 = IB._fetch_url_bytes("https://example.test/x.png", 5)
+        finally:
+            IB.urllib.request.urlopen = o_uo2
+        check("IMG-GPT-06b url 下载不带 Authorization（不向 CDN 泄露凭据）",
+              st2 == 200 and blob2 == PNG_BYTES
+              and "authorization" not in captured.get("hdrs", {"authorization"}))
+        # CASE C: data=[] → GENERATION_FAILED（绝不 PASS）
+        bc = IB.get_backend("openai", r.credential, model="gpt-image-2",
+                            base_url="https://api.test.local/v1")
+        bc._http, _ = mock_transport((200, {"data": []}))
+        check("IMG-GPT-07 CASE C data=[] → GENERATION_FAILED",
+              _raises_code(bc.generate, "GENERATION_FAILED", "p"))
+        # CASE D: data=[{}] → GENERATION_FAILED（指明缺 b64_json/url）
+        bd = IB.get_backend("openai", r.credential, model="gpt-image-2",
+                            base_url="https://api.test.local/v1")
+        bd._http, _ = mock_transport((200, {"data": [{}]}))
+        try:
+            bd.generate("p")
+            okd = False
+        except IB.ImageError as e:
+            okd = (e.code == "GENERATION_FAILED"
+                   and "neither b64_json nor url" in e.message)
+        check("IMG-GPT-08 CASE D data=[{}] → GENERATION_FAILED + 缺失字段说明", okd)
+        # CASE E: HTTP 200 + 非 JSON → PROVIDER_ERROR（归类失败，绝不 PASS）
+        be2 = IB.get_backend("openai", r.credential, model="gpt-image-2",
+                             base_url="https://api.test.local/v1")
+
+        class _FakeResp:
+            status = 200
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *a):
+                return False
+
+            def read(self):
+                return b"<html>gateway error page</html>"
+        o_uo = IB.urllib.request.urlopen
+        IB.urllib.request.urlopen = lambda req, timeout=None: _FakeResp()
+        try:
+            be2._http = IB._transport_http     # 真实 transport（urlopen 已离线劫持）
+            oke = _raises_code(be2.generate, "PROVIDER_ERROR", "p")
+        finally:
+            IB.urllib.request.urlopen = o_uo
+        check("IMG-GPT-09 CASE E 200+非JSON → PROVIDER_ERROR（归类失败）", oke)
+
     # IMG-13 secret_leak_qa：本阶段全部新文件+项目 artifacts FAIL=0
     hits_repo = []
     for fn in ("image_backends.py", "ai_figure_gate.py", "image_provider.py",

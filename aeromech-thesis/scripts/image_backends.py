@@ -56,7 +56,14 @@ def _transport_http(method, url, headers, body, timeout):
     req = urllib.request.Request(url, data=body, headers=headers, method=method)
     try:
         with urllib.request.urlopen(req, timeout=timeout) as resp:
-            return resp.status, json.loads(resp.read().decode("utf-8") or "{}")
+            raw = resp.read().decode("utf-8", "replace")
+            try:
+                return resp.status, json.loads(raw or "{}")
+            except json.JSONDecodeError:
+                # HTTP 200 + 非 JSON（网关错误页等）必须归类失败，绝不能当成功
+                raise ImageError("PROVIDER_ERROR",
+                                 f"malformed response: non-JSON body "
+                                 f"(HTTP {resp.status}, {len(raw)}B)")
     except urllib.error.HTTPError as e:
         try:
             payload = json.loads(e.read().decode("utf-8", "replace") or "{}")
@@ -66,6 +73,20 @@ def _transport_http(method, url, headers, body, timeout):
     except socket.timeout:
         raise ImageError("TIMEOUT", f"request exceeded {timeout}s")
     except (urllib.error.URLError, OSError) as e:
+        raise ImageError("NETWORK_ERROR", redact_text(str(e)))
+
+
+def _fetch_url_bytes(url, timeout):
+    """provider 返回 url 形态结果时取回图像字节（GET 的是已完成生成的产物，
+    不产生新生成费用）。绝不携带 Authorization：URL host 可能是第三方 CDN，
+    向其泄露凭据是不可接受的。"""
+    req = urllib.request.Request(str(url), headers={"User-Agent": "aeromech-thesis"})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            return resp.status, resp.read()
+    except socket.timeout:
+        raise ImageError("TIMEOUT", f"image download exceeded {timeout}s")
+    except (urllib.error.URLError, OSError, ValueError) as e:
         raise ImageError("NETWORK_ERROR", redact_text(str(e)))
 
 
@@ -150,15 +171,29 @@ class OpenAICompatBackend(ImageBackend):
         status, payload = self._post_json("/images/generations", body)
         if status not in (200, 201):
             self._map_error(status, payload)
-        data = (payload or {}).get("data") or []
-        b64 = (data[0].get("b64_json") if data and isinstance(data[0], dict) else None)
-        if not b64:
+        # OpenAI-compatible 成功形态两种：data[0].b64_json 或 data[0].url。
+        # data 缺失/[]/[{}]/非 dict 元素 → 一律 GENERATION_FAILED，绝不当成功。
+        data = (payload or {}).get("data")
+        if not isinstance(data, list) or not data:
             raise ImageError("GENERATION_FAILED",
-                             "provider returned no image data")
-        try:
-            blob = base64.b64decode(b64)
-        except Exception as e:
-            raise ImageError("GENERATION_FAILED", f"undecodable image: {e}")
+                             f"provider returned no image data "
+                             f"(HTTP {status}; data absent or empty)")
+        d0 = data[0] if isinstance(data[0], dict) else {}
+        b64 = d0.get("b64_json")
+        if b64:
+            try:
+                blob = base64.b64decode(b64)
+            except Exception as e:
+                raise ImageError("GENERATION_FAILED", f"undecodable image: {e}")
+        elif d0.get("url"):
+            st2, blob = _fetch_url_bytes(d0["url"], self.timeout)
+            if st2 not in (200, 201):
+                raise ImageError("GENERATION_FAILED",
+                                 f"image url fetch HTTP {st2}")
+        else:
+            raise ImageError("GENERATION_FAILED",
+                             "data[0] has neither b64_json nor url (keys="
+                             + ",".join(sorted(d0.keys())) + ")")
         if len(blob) < 1000:
             raise ImageError("GENERATION_FAILED",
                              f"response too small ({len(blob)}B), likely empty")
