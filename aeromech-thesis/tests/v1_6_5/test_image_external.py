@@ -10,6 +10,7 @@
   IMG-13 secret_leak_qa FAIL=0；IMG-14 attempts≤3 不无限重试。
 """
 import base64
+import contextlib
 import io as _io
 import json
 import os
@@ -130,10 +131,10 @@ def main():
         check("IMG-02a POST /images/generations 端点+URL",
               c["method"] == "POST" and c["url"] ==
               "https://api.test.local/v1/images/generations")
-        check("IMG-02b Authorization Bearer 头 + JSON 体字段",
+        check("IMG-02b Authorization Bearer 头 + JSON 体字段（gpt-image 系不发 response_format）",
               c["headers"]["Authorization"] == "Bearer " + FAKE_KEY and
               c["body"]["model"] == "gpt-image-2" and
-              c["body"]["response_format"] == "b64_json" and c["body"]["n"] == 1)
+              "response_format" not in c["body"] and c["body"]["n"] == 1)
 
         # IMG-03 响应解析：b64 → PNG bytes；过小/缺 data → GENERATION_FAILED
         blob = b.generate("p2")
@@ -314,6 +315,73 @@ def main():
         st, rec = FI.current_status(root4, "FIG-011")
         check("IMG-14 第 4 次请求→零 HTTP + 成本闸回落记录",
               hits == [] and "成本闸" in rec["reason"], rec["reason"][:60])
+
+    # IMG-GPT gpt-image 参数兼容（真实中转站 PROVIDER_ERROR 根因修复；全部离线 mock）
+    with Env():
+        configured_openai()
+        r = IC.resolve()
+        # IMG-GPT-01 gpt-image 系请求不含 response_format（恒返 b64；参数被 400 拒绝）
+        b = IB.get_backend("openai", r.credential, model="gpt-image-2",
+                           base_url="https://api.test.local/v1")
+        b._http, calls = mock_transport(good_image())
+        b.generate("p", size="1024x1024")
+        check("IMG-GPT-01 gpt-image-2 请求不含 response_format",
+              "response_format" not in calls[0]["body"], str(calls[0]["body"])[:90])
+        # IMG-GPT-02 gpt-image 系 smoke 尺寸=1024x1024
+        b2 = IB.get_backend("openai", r.credential, model="gpt-image-2",
+                            base_url="https://api.test.local/v1")
+        b2._http, calls2 = mock_transport(good_image())
+        b2.check()
+        check("IMG-GPT-02 gpt-image smoke size=1024x1024（256x256 会被 400 拒绝）",
+              calls2[0]["body"]["size"] == "1024x1024")
+        # IMG-GPT-03 非 gpt-image 模型族保留原兼容行为
+        b3 = IB.get_backend("openai", r.credential, model="dall-e-3",
+                            base_url="https://api.test.local/v1")
+        b3._http, calls3 = mock_transport(good_image())
+        b3.generate("p")
+        b3._http, calls4 = mock_transport(good_image())
+        b3.check()
+        check("IMG-GPT-03a 非 gpt-image 仍发送 response_format=b64_json",
+              calls3[0]["body"].get("response_format") == "b64_json")
+        check("IMG-GPT-03b 非 gpt-image smoke 保留 SMOKE_SIZE",
+              calls4[0]["body"]["size"] == IB.SMOKE_SIZE)
+        # IMG-GPT-04 CLI 失败输出：显示 redact 后 provider message，无 Key 泄漏
+        import image_cli as ICM
+        be = IB.get_backend("openai", r.credential, model="gpt-image-2",
+                            base_url="https://api.test.local/v1")
+        be._http, _ = mock_transport((400, {"error": {
+            "message": "Unknown parameter; credential=" + FAKE_KEY,
+            "code": "unknown_parameter"}}))
+
+        class _R:
+            state = IC.STATE_AVAILABLE
+            backend = "openai"
+            model = "gpt-image-2"
+            base_url = "https://api.test.local/v1"
+            credential = r.credential
+
+            def to_public(self):
+                return {"backend": "openai", "model": "gpt-image-2",
+                        "credential": "configured", "source": "test",
+                        "reason": "", "malformed_lines": 0}
+
+        o_resolve, o_get, o_smoke = ICM.IC.resolve, IB.get_backend, ICM._smoke_dir
+        ICM.IC.resolve = lambda required=True: _R()
+        IB.get_backend = lambda *a, **k: be
+        ICM._smoke_dir = lambda: os.path.join(tmp, "smokehome")
+        buf = _io.StringIO()
+        try:
+            with contextlib.redirect_stdout(buf):
+                rc = ICM._cmd_test(type("A", (), {"no_network": False})())
+        finally:
+            ICM.IC.resolve, IB.get_backend, ICM._smoke_dir = o_resolve, o_get, o_smoke
+        out = buf.getvalue()
+        check("IMG-GPT-04a CLI 失败显示 PROVIDER_ERROR + redact 后 message",
+              rc == 1 and "PROVIDER_ERROR" in out and "Message:" in out
+              and "Unknown parameter" in out, out[:130])
+        check("IMG-GPT-04b 输出无 Key/Authorization 泄漏",
+              FAKE_KEY not in out and "Bearer " + FAKE_KEY not in out
+              and "credential=sk-" not in out.replace("credential=" + IC.REDACTED, ""))
 
     # IMG-13 secret_leak_qa：本阶段全部新文件+项目 artifacts FAIL=0
     hits_repo = []

@@ -40,9 +40,14 @@ CLEAR = ("IMAGE_BACKEND", "OPENAI_API_KEY", "OPENAI_MODEL", "OPENAI_BASE_URL",
 
 class Clean:
     def __enter__(self):
-        self._saved = {k: os.environ.get(k) for k in CLEAR}
+        self._saved = {k: os.environ.get(k) for k in CLEAR + ("HOME", "USERPROFILE")}
         for k in CLEAR:
             os.environ.pop(k, None)
+        # 隔离用户级 ~/.aeromech/.env：真实机器上用户可能已配置（本测试必须与
+        # 环境无关地验证"无配置时"行为——与 test_image_external.Env 同口径）
+        self._home = tempfile.mkdtemp(prefix="clean165_")
+        os.environ["HOME"] = os.environ["USERPROFILE"] = self._home
+        os.environ["AEROMECH_SKILL_HOME"] = self._home
         return self
 
     def __exit__(self, *a):
@@ -51,6 +56,7 @@ class Clean:
                 os.environ.pop(k, None)
             else:
                 os.environ[k] = v
+        shutil.rmtree(self._home, ignore_errors=True)
 
 
 def make_home(backend_lines):

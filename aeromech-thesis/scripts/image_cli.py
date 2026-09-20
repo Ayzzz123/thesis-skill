@@ -67,6 +67,11 @@ def _cmd_status(_a):
     return {"AVAILABLE": 0, "UNAVAILABLE": 0, "INVALID": 1, "FAILED": 3}[pub["state"]]
 
 
+def _smoke_dir():
+    """smoke artifact 目录：用户级 ~/.aeromech/smoke（不属于任何论文项目）。"""
+    return os.path.join(os.path.expanduser("~"), ".aeromech", "smoke")
+
+
 def _cmd_test(a):
     r = IC.resolve(required=True)
     if r.state == IC.STATE_UNAVAILABLE and not r.credential:
@@ -83,19 +88,50 @@ def _cmd_test(a):
         return 1 if r.state == IC.STATE_INVALID else 0
     # 真实 smoke（§十一）：仅用户主动执行 image test 才外呼一次最小生成；
     # 普通回归/构建从不调用此路径。任何输出不含 Key。
+    import hashlib
+    import json
+    import time
     import image_backends as IB
     if a.no_network:
         print("Generation: skipped (--no-network)")
         return 0
     print("[image test] 将使用您配置的 Key 发起一次最小真实生成，可能产生少量 API 费用。")
+    smoke_dir = _smoke_dir()
+    os.makedirs(smoke_dir, exist_ok=True)
+    art = os.path.join(smoke_dir,
+                       "smoke_test_only_" + time.strftime("%Y%m%d-%H%M%S") + ".png")
     try:
         backend = IB.get_backend(r.backend, r.credential, model=r.model,
                                  base_url=r.base_url)
-        ok = backend.check()
-        print("Generation: OK" if ok else "Generation: FAILED (empty response)")
-        return 0 if ok else 1
+        ok = backend.check(out_path=art)   # 同一次调用产出 artifact（不二次请求）
+        if not ok:
+            print("Generation: FAILED (empty response)")
+            return 1
+        sha = hashlib.sha256(open(art, "rb").read()).hexdigest()
+        # provenance 旁车（白名单字段，无凭据；仅证明链路，不进任何论文/研究证据）
+        prov_path = art[:-4] + ".provenance.json"
+        with open(prov_path, "w", encoding="utf-8") as f:
+            json.dump({"purpose": "smoke_test_only",
+                       "generation_method": "ai_image_model",
+                       "provider": r.backend, "model": r.model,
+                       "timestamp": time.strftime("%Y-%m-%dT%H:%M:%S%z"),
+                       "prompt_sha256_16": hashlib.sha256(
+                           ("minimal academic diagram placeholder, single grey "
+                            "rectangle on white background, no text").encode()
+                       ).hexdigest()[:16],
+                       "artifact": os.path.basename(art), "artifact_hash": sha,
+                       "note": "external provider connectivity smoke; "
+                               "NOT research evidence; not part of any thesis project"},
+                      f, ensure_ascii=False, indent=1)
+        print("Generation: OK")
+        print(f"Artifact:   {art}")
+        print(f"SHA256:     {sha}")
+        print(f"Provenance: {prov_path} (purpose=smoke_test_only)")
+        return 0
     except IB.ImageError as e:
         print(f"Generation: FAILED | {e.code}")     # e 已源头脱敏
+        if e.message:
+            print(f"Message: {e.message}")             # redact_text 后的 provider 信息
         return 1
     except Exception as e:
         print("Generation: FAILED | GENERATION_FAILED | "

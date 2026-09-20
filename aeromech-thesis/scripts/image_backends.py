@@ -45,6 +45,12 @@ class ImageError(Exception):
         return f"{self.code}: {self.message}"
 
 
+def _family_wants_response_format(model):
+    """gpt-image 系恒返 b64 且不接受 response_format 参数（HTTP 400 Unknown parameter，
+    真实 provider 实测）；DALL-E 等模型族仍需显式 b64_json。按模型族判断，不写死单模型。"""
+    return not str(model or "").lower().startswith("gpt-image")
+
+
 def _transport_http(method, url, headers, body, timeout):
     """真实 HTTP（stdlib）。headers 含 Authorization——本函数不落日志不外传。"""
     req = urllib.request.Request(url, data=body, headers=headers, method=method)
@@ -114,11 +120,19 @@ class ImageBackend:
     def generate(self, prompt, size=None, out_path=None):
         raise NotImplementedError
 
-    def check(self):
-        """最小 smoke：真实生成一张极小图（仅用户主动 image test 调用）。"""
+    def check(self, out_path=None):
+        """最小 smoke：真实生成一张极小图（仅用户主动 image test 调用）。
+        out_path：可选落盘路径（同一次调用既验证又产出 artifact，不二次请求）。"""
         png = self.generate("minimal academic diagram placeholder, single grey "
-                            "rectangle on white background, no text", size=SMOKE_SIZE)
+                            "rectangle on white background, no text",
+                            size=self.smoke_size(), out_path=out_path)
         return len(png) > 0
+
+    def smoke_size(self):
+        """smoke 尺寸按模型族：gpt-image 系最小支持 1024x1024（256x256 会被
+        HTTP 400 invalid_value 拒绝）；其余模型族保留 256x256 最小成本。"""
+        return "1024x1024" if not _family_wants_response_format(self.model) \
+            else SMOKE_SIZE
 
 
 class OpenAICompatBackend(ImageBackend):
@@ -130,7 +144,9 @@ class OpenAICompatBackend(ImageBackend):
         if not prompt or not str(prompt).strip():
             raise ImageError("GENERATION_FAILED", "empty prompt rejected at backend")
         body = {"model": self.model, "prompt": str(prompt), "n": 1,
-                "size": size or "1024x1024", "response_format": "b64_json"}
+                "size": size or "1024x1024"}
+        if _family_wants_response_format(self.model):
+            body["response_format"] = "b64_json"   # gpt-image 系恒返 b64，发该参数会被 400 拒绝
         status, payload = self._post_json("/images/generations", body)
         if status not in (200, 201):
             self._map_error(status, payload)
