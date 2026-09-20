@@ -1,5 +1,25 @@
 # CHANGELOG — aeromech-thesis
 
+## v1.6.5 — Academic Figure Quality & User-Configured Image Provider
+
+**状态：已发布（2026-09-19）。发布验证：Phase 0 审计 + Phase 1 学术视觉系统 + Phase 2A 凭据/安全/回落 + Phase 2B 真实 OpenAI 兼容 Provider 与受控 AI 生图（实现+测试）；Release Readiness Check（九项证据 + HEAD 现势复核，RELEASE_READY=YES）+ 最终 Release 回归全绿 + test-8.0 全 QA PASS + Delivery Gate=PASS。tests/v1_6_5 124 断言 + v1_4/v1_4_1/v1_5/v1_6/test_a/test_b 全绿 + secret_leak_qa FAIL=0 + dev↔install IDENTICAL。版本升级 v1.6.0→v1.6.5（test_document_contract 版本态断言同步翻转到 v1.6.5 发布态）。**
+
+已完成：
+
+- **Academic Visual System**：`figure_style.py` 单一来源（3 轮量化验证的调色板/字号阶梯/间距/图类型注册）；`figkit.py` role= 语义角色色 + style_fingerprint 跨图家族一致；mermaid 回退 fail-closed（语义伪造移除，渲染失败=REJECTED 绝不假装成功）；自证式 PASS 移除（FIG-05/06 删除、GQ-15→SKIP 人工复核项）。
+- **Visual QA**：`figure_visual_qa.py` VIS-01~12（可测项机器判定、主观项→NEEDS_HUMAN_REVIEW、分数永不覆盖 Critical）入 `thesis_build.py` QA 链 + `delivery_gate.py` figure_visual 域；graph_quality 渲染级测量校准（刻度标签带裁剪 + 数字墨高 0.72em——修复假 FAIL，未放松 9.5pt 标准）。
+- **User-Configured Image Model API（可选增强，零阻塞）**：`image_config.py` 凭据解析链 process→skill→`~/.aeromech/.env`（用户级；project .env 默认关闭需 IMAGE_ALLOW_PROJECT_ENV=1；SecretStr 全掩码+指纹，to_public 不含值）；`image_cli.py` config/status/test/remove（status 无 Key=rc 0 正常态）。
+- **OpenAI-Compatible Provider**：`image_backends.py` /images/generations（b64_json 解码、原子落盘、<1000B 判 GENERATION_FAILED）+ 8 类错误分类（INVALID_CREDENTIAL/RATE_LIMIT/MODEL_UNAVAILABLE/NETWORK_ERROR/TIMEOUT/PROVIDER_ERROR/CONTENT_POLICY_ERROR/GENERATION_FAILED；401 不伪装普通失败；错误文本落盘前 redact）+ 可注入 `_http` transport（回归测试零真实网络）。
+- **No-Key Fallback**：无 Key=正常状态自动回落既有 Figure Pipeline（UNAVAILABLE≠错误；旧 spec 零 env 接触、与 v1.6.0 行为字节一致；五类确定性图恒 local 优先；仅 provider_required=external 且无凭据→NEEDS_HUMAN_REVIEW）。
+- **Figure Plan Controlled Generation**：`ai_figure_gate.py` 九字段前置闸（缺失→FIGURE_PLAN_REQUIRED+零 HTTP）；确定性图类型禁 AI 接入；结构化溯源提示词（SYSTEM/PURPOSE/INTENDED_SECTION/SEMANTIC_CONTENT/SOURCE/MUST_SHOW/MUST_NOT_SHOW/STYLE 全部源自 Plan，prompt_hash=sha256[:16]）；provenance 白名单（provider/model/timestamp/prompt_hash/artifact_hash/source_material_refs 等，类 Key 字段名拒绝）；IMAGE_MAX_ATTEMPTS=3 成本闸（跨进程持久）+ 首次调用费用明示。
+- **AI-Generated Visual ≠ Research Evidence**：generation_method=ai_image_model 禁标 verified/partial（RI-E-DISGUISE critical）；证据种子仅 E/DS/CALC/M；record/log 边界 redact（lifecycle/JSONL 落盘无凭据）。
+- **Secret Security**：`secret_leak_qa.py` repo/diff/artifacts 三 scope（9 类 FAIL 正则 + 高熵 WARN；tests/ sk-TEST- 白名单 + 行级可审计豁免 secret-scan-exempt）；发布态 FAIL=0。
+- **test-8.0 validation**：三图按视觉系统重绘（逻辑/数据 100% 不变，VIS 15 项 ALL PASS）；GQ-01b 图3-2 真实文本溢出修复（E6 框加宽）；pipeline 全阶段 PASS + Delivery Gate=PASS。
+
+已知限制：
+
+- **LIVE_SMOKE_TEST = NOT_RUN（REASON = USER_CREDENTIAL_NOT_PROVIDED）**：真实 API 冒烟未执行（用户未提供 Key），如实记录、绝不伪装 PASS。外部 Provider 代码路径经可注入 transport 全覆盖测试（IMG-01~14，26/26 断言）；用户配置 Key 后 `aeromech image test` 一次冒烟即可补验（调用前明示费用），非阻塞项。
+
 ## v1.6.0 — Full-Stack Thesis Orchestration
 
 **状态：已发布（2026-09-17）。发布验证：Phase 0~5 实现+测试；Phase 6 = test-8.0 全栈冷启动（新校模板、四断点恢复实测、隐藏缺陷自查含 2 项 DETECTION FAILED 修复复验、人工复核 7/7、delivery_gate=PASS）；Phase 7 = RC 报告与版本升级 v1.5.0→v1.6.0。tests/v1_6 395 断言 + v1_4/v1_4_1/v1_5/test_a/test_b 全绿 + t30~t70 外部回归 + dev↔install IDENTICAL。**

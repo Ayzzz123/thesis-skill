@@ -302,19 +302,26 @@ mmdc 失败 → matplotlib 生成真正可读的替代图（含流程图框/故�
 
 ## 11. 当前版本
 
-**aeromech-thesis v1.6.0（Full-Stack Thesis Orchestration）**
+**aeromech-thesis v1.6.5（Academic Figure Quality & User-Configured Image Provider）**
 
-> v1.6.0 已发布（分支 feature-1.6.0-full-stack-orchestration，经 test-8.0 全栈冷启动 + 全回归 +
-> 全 QA + 7/7 人工复核后从 v1.5.0 升级）。Full-Stack Thesis Orchestration——把既有能力串成完整、
-> 可恢复、可交付的毕业论文 Agent：StateIO + Checkpoint + Resume、统一材料进入（Material
-> Ingestion）、School Requirement Context、Research Context 聚合、阶段调度矩阵、Thesis Orchestrator
-> （Action 模型 + 五策略 Failure Recovery + Drift 检测）、Figure Provider 接口（不复制 Figure Engine）、
-> 统一 Thesis Build Pipeline + Artifact Manifest、Delivery Gate 全聚合。规则见 `references/orchestration.md`，
-> SKILL.md §21。发布验证：tests/v1_6 395 断言 + v1_4/v1_4_1/v1_5 全绿 + test-8.0 delivery_gate=PASS
-> （四断点恢复实测、隐藏缺陷自查含 2 项 DETECTION FAILED 修复复验、人工复核 7/7）+ t30~t70 外部回归。
+> v1.6.5 已发布（分支 feature-1.6.5-figure-optimization，经全回归 + test-8.0 全 QA +
+> Delivery Gate=PASS + secret_leak_qa FAIL=0 后从 v1.6.0 升级）。学术图形质量与用户自配
+> Image Model API（可选增强，零阻塞）——figure_style.py 学术视觉单一来源（3 轮量化验证的
+> 调色板/字号阶梯/间距）、figkit role= 语义角色色、mermaid 回退 fail-closed 不伪造语义、
+> Visual QA VIS-01~12 入构建链与 Delivery Gate、用户级 `~/.aeromech/.env` 凭据
+> （SecretStr 全掩码，image_cli config/status/test/remove）、OpenAI 兼容外部生图
+> （8 类错误分类，401 不伪装普通失败）、无 Key 自动回落既有 Figure Pipeline（UNAVAILABLE≠错误，
+> 旧 spec 与 v1.6.0 字节一致）、Figure Plan 九字段受控生图（缺 Plan=FIGURE_PLAN_REQUIRED+零 HTTP，
+> 确定性图类型恒 local 优先）、AI 生成视觉≠研究证据、secret_leak_qa 泄漏扫描。
+> 发布验证：tests/v1_6_5 124 断言 + v1_4/v1_4_1/v1_5/v1_6/test_a/test_b 全绿 +
+> test-8.0 全 QA PASS + delivery_gate=PASS。
+> 已知限制：LIVE_SMOKE_TEST=NOT_RUN（REASON=USER_CREDENTIAL_NOT_PROVIDED，非阻塞——
+> 外部 Provider 代码路径经可注入 transport 全覆盖测试；用户配置 Key 后 `aeromech image test`
+> 一次冒烟即可补验，调用前明示费用）。
 
-v1.6.0 在 v1.5.0 研究智能基线之上把既有能力串成编排闭环（编排层只调度不重做业务：注册表/RQG/
-诊断/修复/Loop/QA 全部复用原模块），既有能力只增不破：
+v1.6.5 在 v1.6.0 编排闭环之上聚焦图形质量与可选外部生图（编排层/研究层零改动，既有能力只增不破）。
+v1.6.0 编排闭环基线（在 v1.5.0 研究智能基线之上把既有能力串成编排闭环，编排层只调度不重做业务：
+注册表/RQG/诊断/修复/Loop/QA 全部复用原模块）：
 - ✅ **StateIO / Checkpoint / Resume**（`thesis_state.py`）：state.md §3~§11 程序化迁移校验（非法边拒绝不落盘）；CK-XXX 检查点（artifacts+SHA256/注册表快照/qa_state）；resume from_start=false，禁止从 S1 重启
 - ✅ **统一材料进入**（`material_ingestion.py`）：scan/SHA256 去重/类型推断注册——"不得重复读取材料"程序化
 - ✅ **School Requirement Context**（`school_requirements.py`）：模板结构机械提取+逐字段 provenance（official/sample/default/unknown）；样文永不冒充 official；PDF 规范不猜测
@@ -471,12 +478,21 @@ Skill：正在登记材料...
 
 ## 15. README 的原则
 
-本 README 描述的是 **aeromech-thesis v1.6.0** 当前已实现的能力。任何未来功能必须先实现并通过测试，再更新 README，不得为了宣传而提前声明未实现功能。
+本 README 描述的是 **aeromech-thesis v1.6.5** 当前已实现的能力。任何未来功能必须先实现并通过测试，再更新 README，不得为了宣传而提前声明未实现功能。
 
 如发现本文档与实际实现不一致，请以实际实现为准。欢迎反馈文档错误。
 
 ## 版本记录
 
+- v1.6.5 — Academic Figure Quality & User-Configured Image Provider：figure_style.py（学术视觉单一来源：
+  3 轮量化验证调色板/字号阶梯/间距/图类型）+ figkit.py role= 语义角色色 + style_fingerprint + mermaid 回退
+  fail-closed（自证式 PASS 移除：FIG-05/06 删除、GQ-15→SKIP）；figure_visual_qa.py（VIS-01~12 入
+  thesis_build QA 链 + Delivery Gate figure_visual 域）；image_config.py（process→skill→~/.aeromech/.env
+  解析链 + SecretStr 全掩码 + image_cli config/status/test/remove）；image_backends.py（OpenAI 兼容
+  b64 生图 + 8 类错误分类 + 可注入 transport）；ai_figure_gate.py（Figure Plan 九字段闸：缺 Plan=
+  FIGURE_PLAN_REQUIRED+零 HTTP；确定性类型 local 优先；结构化提示词+prompt_hash；provenance 白名单；
+  IMAGE_MAX_ATTEMPTS=3 成本闸+首次费用明示）；research_integrity ai_generated_visual 禁
+  verified/partial；secret_leak_qa（repo/diff/artifacts，发布态 FAIL=0）；graph_quality 渲染测量校准
 - v1.6.0 — Full-Stack Thesis Orchestration：thesis_state.py（StateIO 程序化迁移校验 + CK-XXX 检查点/SHA256 +
   resume from_start=false + drift 检测）；material_ingestion.py（统一材料进入，SHA256 去重"不得重复读取"）；
   school_requirements.py（字段级 provenance official/sample/default/unknown，PDF 规范不猜测）；
