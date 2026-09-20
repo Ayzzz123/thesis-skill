@@ -43,7 +43,11 @@ REGISTRY_SPECS = {
 }
 
 EVIDENCE_TYPES = ["literature", "standard", "manual", "official_document",
-                  "project_material", "experiment", "calculation", "simulation", "assumption"]
+                  "project_material", "experiment", "calculation", "simulation",
+                  "assumption",
+                  # v1.6.5：AI 生成视觉资产——登记为参考素材可以，但永不自动成为
+                  # 研究证据（verification_status 禁 verified/partial，见 RI-E-DISGUISE）
+                  "ai_generated_visual"]
 VERIFICATION_STATUS = ["verified", "partial", "pending", "simulated"]
 CLAIM_TYPES = ["fact", "interpretation", "calculation_result",
                "engineering_judgement", "assumption", "simulation_result"]
@@ -79,9 +83,9 @@ REMEDIATION = {
     "RI-DANGLING": "修复悬空引用：创建被引用条目或改指有效 ID",
     "RI-M-FIELD": "补齐方法 name 字段",
     "RI-M-BASIS": "补齐方法选择依据 basis（说明为什么选该方法）",
-    "RI-E-TYPE": "source_type 使用许可枚举（literature/standard/manual/official_document/project_material/experiment/calculation/simulation/assumption）",
+    "RI-E-TYPE": "source_type 使用许可枚举（literature/standard/manual/official_document/project_material/experiment/calculation/simulation/assumption/ai_generated_visual）",
     "RI-E-STATUS": "verification_status 使用许可枚举（verified/partial/pending/simulated）",
-    "RI-E-DISGUISE": "禁止伪装：simulation/assumption 证据必须记 simulated；如确为实测请更正 source_type",
+    "RI-E-DISGUISE": "禁止伪装：simulation/assumption 证据必须记 simulated；ai_generated_visual 永不 verified/partial；如确为实测请更正 source_type",
     "RI-E-FIELD": "补齐证据 source 字段",
     "RI-DS-TYPE": "type 使用许可枚举（real/public/user_provided/literature/simulated/assumption）",
     "RI-DS-SOURCE": "补齐数据集 source 字段",
@@ -307,6 +311,10 @@ def validate(root):
         if st in ("simulation", "assumption") and vs != "simulated":
             problems.append({"code": "RI-E-DISGUISE", "severity": "critical", "where": w,
                              "detail": f"{st} 证据不得标记为 {vs}（禁止伪装）"})
+        if st == "ai_generated_visual" and vs in ("verified", "partial"):
+            problems.append({"code": "RI-E-DISGUISE", "severity": "critical", "where": w,
+                             "detail": "AI 生成视觉资产不得标记为 verified/partial"
+                                       "（AI 图不是研究证据，§十五）"})
         _require(it, "source", "RI-E-FIELD", w, problems)
         for ref in it.get("claim_supported") or []:
             if not _ref_exists(data, ref):

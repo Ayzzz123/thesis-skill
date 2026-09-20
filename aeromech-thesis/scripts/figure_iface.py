@@ -22,7 +22,7 @@ FigureResult（输出）：figure_id, status, artifact, sha256, quality（checks
 研究真值仍在 v1.4 figures.yaml（本模块只读引用 + 生命周期日志，不改注册表写入路径）。
 
 默认 LocalProvider：
-  kind=mermaid → 复用 scripts/render_mermaid.py（mmdc→fallback，FIGURE_ERROR→REJECTED，不落占位图）
+  kind=mermaid → 复用 scripts/render_mermaid.py（仅 mmdc 真实渲染可 GENERATED；v1.6.5：假内容 fallback 已删除，FIGURE_ERROR→REJECTED 且清理残留文件，不落占位图）
   kind=script  → 项目内生成脚本（figkit/matplotlib），受控执行（同 v1.5 recompute 信任边界：
                  仅 sys.executable 跑项目根内相对 .py，无 shell，cwd=root，180s 超时）
   validate     → 复用 graph_quality_qa.check_graphs（单图几何检查，基于 figkit layout JSON）；
@@ -171,15 +171,26 @@ def load_lifecycle(root):
 
 
 def record(root, figure_id, status, artifact=None, reason="", provider="local",
-           sha=None):
+           sha=None, provider_meta=None):
     if status not in LIFECYCLE:
         raise ValueError(f"非法生命周期状态 {status}（允许 {LIFECYCLE}）")
     ap = os.path.join(root, artifact) if artifact and not os.path.isabs(artifact) else artifact
     hist = load_lifecycle(root)
+    # v1.6.5 Phase 2A（§九）：自由文本边界统一脱敏——异常文本可能携带凭据，
+    # lifecycle.yaml 会进交付项目，落盘前必须过 redact_text。
+    try:
+        from image_config import redact_text, redact_obj
+        reason = redact_text(reason)
+        if provider_meta is not None:
+            provider_meta = redact_obj(provider_meta)
+    except ImportError:
+        pass
     rec = {"figure_id": figure_id, "ts": _now(), "status": status,
            "artifact": artifact.replace("\\", "/") if artifact else None,
            "sha256": sha or (_sha(ap) if ap else None), "reason": reason,
            "provider": provider}
+    if provider_meta is not None:
+        rec["provider_meta"] = provider_meta   # provenance（白名单字段，无凭据）
     hist.setdefault(figure_id, []).append(rec)
     os.makedirs(figures_dir(root), exist_ok=True)
     with open(lifecycle_path(root), "w", encoding="utf-8") as f:
@@ -223,6 +234,7 @@ class LocalProvider(FigureProvider):
                 kind, source = "script", os.path.relpath(script, root).replace("\\", "/")
             out.append({"figure_id": fid, "name": it.get("name", fid), "kind": kind,
                         "source": source, "out": os.path.relpath(png, root).replace("\\", "/"),
+                        "type": it.get("type"),   # v1.6.5：图类型分派（VIS-11 输入）
                         "related_rqs": it.get("related_rqs") or [],
                         "related_analyses": it.get("related_analyses") or [],
                         "related_claims": it.get("related_claims") or []})
@@ -259,13 +271,19 @@ class LocalProvider(FigureProvider):
         ok, msg, _br, code = RM.render_with_mmdc(mmd, out, "transparent")
         if ok:
             return self._ok(root, fid, rel_out, out, reason="mermaid 渲染成功")
-        fb_ok, fb_msg = RM.generate_fallback_figure(out, spec.get("name", fid))
-        if fb_ok:
-            return self._ok(root, fid, rel_out, out, reason="mmdc 失败→matplotlib fallback 合格图（非占位）")
-        rec = record(root, fid, "REJECTED", artifact=rel_out,
-                     reason=f"FIGURE_ERROR：mmdc 与 fallback 均失败（{str(fb_msg)[:80]}）；"
-                            f"该图不得进入最终论文", provider=self.name)
-        return _result(fid, "REJECTED", rel_out, None, rec, reason="FIGURE_ERROR")
+        # v1.6.5（D2）：失败即失败。不生成任何可冒充真实模型的 fallback；
+        # mmdc 失败可能留下残缺文件——清理，防止半成品混进交付。
+        if os.path.isfile(out):
+            try:
+                os.remove(out)
+            except OSError:
+                pass
+        rec = record(root, fid, "REJECTED", artifact=None,
+                     reason=f"FIGURE_ERROR：mmdc 渲染失败（{code}；{str(msg)[:80]}）；"
+                            f"假内容 fallback 已废除（v1.6.5），该图需修复环境或改用"
+                            f"忠实源（figkit 脚本）重生成；不得进入最终论文",
+                     provider=self.name)
+        return _result(fid, "REJECTED", None, None, rec, reason="FIGURE_ERROR")
 
     def _gen_script(self, root, spec, out, rel_out):
         fid = spec.get("figure_id")
@@ -374,9 +392,123 @@ def generate_figure(root, figure_id, provider="local"):
         save_plan(root, specs, provider=provider)
     for sp in specs:
         if str(sp.get("figure_id")) == figure_id:
+            # v1.6.5 Phase 2A fallback 契约（image_provider.route）：
+            # 仅当 spec 显式声明 provider 字段才走路由解析——旧 spec（无该字段）
+            # 与 v1.6.0 行为逐字节一致（不读任何 env、不触碰 ~/.aeromech）。
+            if sp.get("provider") and sp["provider"] != "local":
+                import image_provider as IP
+                dec = IP.route(sp)
+                if dec["needs_configuration"]:
+                    rec = record(root, figure_id, "NEEDS_HUMAN_REVIEW",
+                                 artifact=sp.get("out"),
+                                 reason="NEEDS_CONFIGURATION: " + dec["reason"],
+                                 provider=sp["provider"])
+                    return _result(figure_id, "NEEDS_HUMAN_REVIEW", sp.get("out"),
+                                   None, rec, reason="NEEDS_CONFIGURATION")
+                if dec["provider"] == "local":
+                    res = get_provider("local").generate(root, sp)
+                    if res.get("status") in STATUS_OK and dec.get("fallback_from"):
+                        record(root, figure_id, res["status"],
+                               artifact=res.get("artifact"),
+                               reason="fallback_to_existing_pipeline: "
+                                      + str(dec["fallback_from"]),
+                               provider="local")
+                    return res
+                if dec["provider"] == "external_image":
+                    return _generate_external(root, sp, dec)
+                # route 返回 None（未实现 backend 等）→ 明确失败，绝不 fake image。
+                rec = record(root, figure_id, "REJECTED",
+                             reason=dec.get("reason") or "external 不可用且无回落",
+                             provider=sp["provider"])
+                return _result(figure_id, "REJECTED", None, None, rec,
+                               reason="EXTERNAL_NOT_IMPLEMENTED")
             return prov.generate(root, sp)
     return {"figure_id": figure_id, "status": "REJECTED", "artifact": None,
             "reason": f"计划中无 {figure_id}", "sha256": None, "quality": []}
+
+
+def _external_attempts(root, figure_id):
+    """成本闸计数：lifecycle 中该图已发生的外部 API 调用次数（跨进程持久）。"""
+    n = 0
+    for rec in load_lifecycle(root).get(figure_id) or []:
+        meta = rec.get("provider_meta") or {}
+        if meta.get("generation_method") == "ai_image_model" or \
+                str(rec.get("provider") or "") in ("external_image", "image"):
+            if rec.get("status") in ("GENERATED", "REJECTED", "VALIDATED",
+                                     "NEEDS_HUMAN_REVIEW") and meta.get("attempts"):
+                n = max(n, int(meta.get("attempts") or 0))
+            elif rec.get("status") == "REJECTED" and "external" in str(rec.get("reason")):
+                n += 1
+    return n
+
+
+def _generate_external(root, sp, dec):
+    """受控外部生图（§五/§六/§七/§九/§十）：
+    Figure Plan 闸（不过→零 HTTP）→ 成本闸（≤IMAGE_MAX_ATTEMPTS，默认3）→
+    首次真实调用前费用提示 → backend 调用 → provenance 登记（白名单，无凭据）。
+    任何失败按错误码记录并回落既有管线（fallback 图仍过全量 QA）；绝不 fake。"""
+    import ai_figure_gate as G
+    import image_backends as IB
+    from image_config import redact_text
+    fid = sp["figure_id"]
+    ok, res = G.plan_gate(sp)
+    if not ok:
+        rec = record(root, fid, "NEEDS_HUMAN_REVIEW", artifact=sp.get("out"),
+                     reason=f"{res['code']}: {res['message']}"
+                            + (f"（缺 {res.get('missing')}）" if res.get("missing") else "")
+                            + "；零 HTTP 调用",
+                     provider="external_image")
+        return _result(fid, "NEEDS_HUMAN_REVIEW", sp.get("out"), None, rec,
+                       reason=res["code"])
+    plan = res
+    max_att = int(os.environ.get("IMAGE_MAX_ATTEMPTS", "3") or 3)
+    used = _external_attempts(root, fid)
+    if used >= max_att:
+        sp_local = dict(sp)
+        sp_local["provider"] = "local"
+        out = get_provider("local").generate(root, sp_local)
+        record(root, fid, out.get("status", "REJECTED"), artifact=out.get("artifact"),
+               reason=f"成本闸：外部调用已达上限 {max_att}（IMAGE_MAX_ATTEMPTS），"
+                      f"回落既有管线（不无限重试）", provider="local")
+        return out
+    attempt = used + 1
+    if attempt == 1 and not sp.get("_cost_notice_ok"):
+        print("[figure] 将使用您配置的 Image Model API Key 调用外部服务"
+              "（backend=%s model=%s），可能产生您的 API 费用。"
+              % (dec["external_backend"], dec.get("external_model")))
+    prompt, phash = G.assemble_prompt(plan)
+    out_rel = sp.get("out") or os.path.join(
+        ".aeromech", "artifacts", "figures", "final", fid + ".png")
+    out_abs = out_rel if os.path.isabs(out_rel) else os.path.join(root, out_rel)
+    os.makedirs(os.path.dirname(out_abs), exist_ok=True)
+    backend = IB.get_backend(dec["external_backend"], dec["credential"],
+                             model=dec.get("external_model"),
+                             base_url=dec.get("external_base_url"))
+    prov, _rejected = G.build_provenance(
+        plan, provider=dec["external_backend"], model=dec.get("external_model"),
+        prompt_hash=phash, artifact_hash=None, timestamp=_now(), attempts=attempt)
+    try:
+        backend.generate(prompt, out_path=out_abs)
+    except IB.ImageError as e:
+        rec = record(root, fid, "REJECTED", artifact=None,
+                     reason=redact_text(f"external {e.code}（第 {attempt}/{max_att} 次）"
+                                        f"：{e.message}")[:200],
+                     provider="external_image",
+                     provider_meta={**prov, "artifact_hash": None})
+        return _result(fid, "REJECTED", None, None, rec, reason=e.code)
+    except Exception as e:
+        rec = record(root, fid, "REJECTED", artifact=None,
+                     reason=redact_text(f"external GENERATION_FAILED："
+                                        f"{type(e).__name__}: {e}")[:200],
+                     provider="external_image", provider_meta=prov)
+        return _result(fid, "REJECTED", None, None, rec, reason="GENERATION_FAILED")
+    sha = _sha(out_abs)
+    prov["artifact_hash"] = sha
+    rec = record(root, fid, "GENERATED", artifact=out_rel,
+                 reason=f"external 生成成功（{dec['external_backend']}/"
+                        f"{dec.get('external_model')}，第 {attempt} 次）",
+                 provider="external_image", provider_meta=prov)
+    return _result(fid, "GENERATED", out_rel, sha, rec, reason="ok")
 
 
 def validate_figure(root, figure_id, provider="local"):

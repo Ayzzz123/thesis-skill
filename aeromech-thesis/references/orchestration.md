@@ -5,8 +5,9 @@
 > 与格式/文档（Template Fidelity/QA 链/母版原语）一律复用既有模块，编排层零业务逻辑复制。
 > **规则真源 = 脚本实际行为**；本文与 `tests/v1_6/test_document_contract.py` 互为约束（文档写 A
 > 而代码是 B → 测试 FAIL）。适用对象：`.aeromech/` 工作区内的论文项目。
-> 状态：v1.6.0 已发布（2026-09-17，经 test-8.0 全栈冷启动 + 全回归 + 全 QA + 7/7 人工复核，delivery_gate=PASS）
-> 待 test-8.0 + 全回归 + 全 QA 全 PASS 后升级。
+> 状态：当前 Skill 版本 v1.6.5 已发布（2026-09-19；v1.6.5 变更限于图形视觉系统与 Image Provider，
+> 编排规则层自 v1.6.0 起未变。v1.6.0 于 2026-09-17 经 test-8.0 全栈冷启动 + 全回归 + 全 QA +
+> 7/7 人工复核发布，delivery_gate=PASS）
 
 ## 1. 分层与模块地图
 

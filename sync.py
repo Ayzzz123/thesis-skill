@@ -23,7 +23,7 @@ DEFAULT_DEV = os.path.join(HERE, "aeromech-thesis")
 DEFAULT_INSTALL = os.path.join(os.path.expanduser("~"), ".qoder-cn", "skills", "aeromech-thesis")
 IGNORE_DIRS = {"__pycache__", ".git", ".DS_Store"}
 IGNORE_SUFFIX = (".pyc", ".pyo", ".log")
-IGNORE_NAMES = {".DS_Store"}
+IGNORE_NAMES = {".DS_Store", ".env"}   # v1.6.5：用户凭据文件不参与镜像（不复制、不删除）
 REGRESSION_DIR = os.path.join("tests", "v1_4", "regression")
 DELETE_CAP = 10
 

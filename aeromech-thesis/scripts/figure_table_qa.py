@@ -186,9 +186,18 @@ def check_figs(rep, figs, pdf_path, docx_path, fig_meta=None, figs_min=1):
             ("；".join(d4) + "（≥7pt）" if d4 else "无 layout 元数据") +
             (f"；未复核: {skipped}" if skipped else ""),
             skip=(not d4 and bool(skipped)))
-    # FIG-05/06 节点重叠/箭头穿字：位图不可机器判 → 生成端程序化布局 + 人工复核确认
-    rep.add("FIG-05 节点无重叠", True, "matplotlib 程序化布局（无自动重叠）；人工目检已确认（见附图 pair）")
-    rep.add("FIG-06 箭头不穿文字", True, "程序化连线避开节点框；人工目检已确认")
+    # FIG-05/06 节点重叠/箭头穿字：v1.6.5 去自证——docx/位图层无法可靠机判，
+    # 几何真值由 graph_quality GQ-01~03 在 figkit layout JSON 上实测（有元数据时）。
+    # 本层不再无条件 True；有 layout 元数据→SKIP 指向 GQ，无元数据→SKIP 交人工目检。
+    _has_meta = bool(fig_meta)
+    rep.add("FIG-05 节点无重叠", True,
+            ("几何重叠由 graph_quality GQ-01 在 figkit layout JSON 上实测；本层不重复判定"
+             if _has_meta else "无 layout 元数据（非 figkit 源）：交人工目检，本层不判定"),
+            skip=True)
+    rep.add("FIG-06 箭头不穿文字", True,
+            ("穿字由 graph_quality GQ-02/03 在 figkit layout JSON 上实测；本层不重复判定"
+             if _has_meta else "无 layout 元数据（非 figkit 源）：交人工目检，本层不判定"),
+            skip=True)
     # FIG-07 图题完整
     ok7 = all(f["cap_cn"] and f["cap_en"] for f in figs)
     rep.add("FIG-07 图题完整", ok7, "每图含中文题+英文题" if ok7 else "缺题注")
