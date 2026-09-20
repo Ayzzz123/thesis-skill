@@ -18,7 +18,18 @@
 
 已知限制：
 
-- **LIVE_SMOKE_TEST = NOT_RUN（REASON = USER_CREDENTIAL_NOT_PROVIDED）**：真实 API 冒烟未执行（用户未提供 Key），如实记录、绝不伪装 PASS。外部 Provider 代码路径经可注入 transport 全覆盖测试（IMG-01~14，26/26 断言）；用户配置 Key 后 `aeromech image test` 一次冒烟即可补验（调用前明示费用），非阻塞项。
+- **LIVE_SMOKE_TEST = NOT_RUN（REASON = USER_CREDENTIAL_NOT_PROVIDED）**：发布时真实 API 冒烟未执行（用户未提供 Key），如实记录、绝不伪装 PASS。外部 Provider 代码路径经可注入 transport 全覆盖测试（IMG-01~14，26/26 断言）；用户配置 Key 后 `aeromech image test` 一次冒烟即可补验（调用前明示费用），非阻塞项。**（已于发布当日随用户完成真实凭据配置而解决——真实 Smoke PASS，见下方 Post-release 小节。）**
+
+### Post-release 修复与真实验证（2026-09-20；HEAD = f8b7ceb，working tree clean）
+
+发布当日用户完成真实凭据配置（`IMAGE_BACKEND=openai` + provider 专属 API Key 环境变量如 `OPENAI_API_KEY`，写入用户级 `~/.aeromech/.env`），随后仅两轮必要兼容修复与真实验证——未新增功能、未动 Figure Plan/Cost Guard/Visual QA/Academic Style QA/Research Boundary/Secret Leak 任何边界语义：
+
+- **782ad0d — gpt-image 请求参数兼容**：gpt-image 系拒绝 `response_format` 参数与 256x256 尺寸（HTTP 400，真实中转站实测 PROVIDER_ERROR 根因）→ 按模型族判断：gpt-image 系不发 response_format、smoke 尺寸 1024x1024（DALL-E 等其他模型族行为原样保留）；`image test` 失败时输出 redact 后的 provider message（原先只打错误码）；成功时同一次调用落盘 `smoke_test_only` artifact + provenance 旁车（`~/.aeromech/smoke/`）；test_image_resolution `Clean()` 补 HOME 隔离（真实用户 env 不再泄漏进密封断言）。
+- **f8b7ceb — url 形态成功响应兼容**：解析器审计确认 OpenAI-compatible 两种文档化成功形态中 `data[0].url` 未支持（URL 形态 200 会被误判 GENERATION_FAILED）→ 最小兼容：url 形态经**无凭据 GET** 取回已完成生成的产物（绝不向第三方 CDN host 携带 Authorization，IMG-GPT-06b 断言）；HTTP 200+非 JSON 归类 PROVIDER_ERROR（原为裸 JSONDecodeError）；data 缺失/`[]`/`[{}]`/`[None]` 一律 GENERATION_FAILED 不误判成功；b64_json 路径逐字节不变。离线 CASE A~E 回归（IMG-GPT-05~09，零真实网络）。
+- **真实 API Smoke（各恰好 1 次调用，均成功，无重试）**：
+  - `aeromech image test`：gpt-image-2 真实生成 OK（1024x1024 PNG，sha256 5e6d01bb…，provenance smoke_test_only）——**b64_json 真实链路验证 PASS**；
+  - Figure Pipeline 端到端（独立临时项目，非 test-8.0）：Figure Plan Gate PASS（零 HTTP 授权）→ external/openai/gpt-image-2 路由 → 结构化提示词 → 1 次真实 POST → b64_json 解析 → GENERATED + provenance（prompt_hash 逐字节复算一致）；产物标记 smoke_test_only；像素审计 0.00% 霓虹像素 + 单色系学术蓝 + 白底；AI 图未进入任何研究证据（RI-E=0，evidence/DS/CALC/M 注册表零触碰）；全 scope 泄漏扫描 FAIL=0；正式 VIS 域对非 figkit 源按既定语义 VIS-00（layout 元数据不可用→PDF 级 QA 兜底），1 处疑似 CJK 字形小误列为人工确认项；出站凭据审计确认仅生成 POST 携带 Authorization。
+- **结论：本阶段完成；后续不继续扩展 Image Provider，转入真实论文项目端到端验证。**（url 响应形态已有离线测试覆盖；真实验证仅使用 b64_json 形态，各 1 次调用。）
 
 ## v1.6.0 — Full-Stack Thesis Orchestration
 
