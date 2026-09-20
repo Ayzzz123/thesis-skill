@@ -14,6 +14,11 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 TESTS = [
     "test_visual_system.py",
     "test_golden_samples.py",
+    # v1.6.5 Phase 2A：Image Provider（可选增强 + 兼容回落 + 凭据安全）
+    "test_image_config.py",
+    "test_image_resolution.py",
+    "test_image_fallback.py",
+    "test_image_security.py",
 ]
 
 

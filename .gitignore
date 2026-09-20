@@ -4,3 +4,11 @@ __pycache__/
 *.pyc
 *.pyo
 .ipynb_checkpoints/
+
+# v1.6.5 Phase 2A: 凭据文件永不入库（.gitignore 是辅助，secret_leak_qa 才是防线）
+.env
+.env.*
+!.env.example
+*.secret
+credentials.*
+user-config.*

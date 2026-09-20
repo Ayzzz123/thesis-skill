@@ -90,6 +90,13 @@ def log_action(root, stage, reason, input_, output, status):
         except OSError:
             _counter["n"] = 0
     _counter["n"] += 1
+    # v1.6.5 Phase 2A（§九）：JSONL 边界统一脱敏（reason/input/output 自由文本）
+    try:
+        from image_config import redact_text, redact_obj
+        reason = redact_text(reason)
+        input_, output = redact_obj(input_), redact_obj(output)
+    except ImportError:
+        pass
     rec = {"action_id": f"ACT-{_counter['n']:04d}", "stage": stage, "reason": reason,
            "input": input_, "output": output, "status": status, "timestamp": _now()}
     with open(p, "a", encoding="utf-8") as f:

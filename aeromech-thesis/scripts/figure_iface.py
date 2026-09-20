@@ -176,6 +176,13 @@ def record(root, figure_id, status, artifact=None, reason="", provider="local",
         raise ValueError(f"非法生命周期状态 {status}（允许 {LIFECYCLE}）")
     ap = os.path.join(root, artifact) if artifact and not os.path.isabs(artifact) else artifact
     hist = load_lifecycle(root)
+    # v1.6.5 Phase 2A（§九）：自由文本边界统一脱敏——异常文本可能携带凭据，
+    # lifecycle.yaml 会进交付项目，落盘前必须过 redact_text。
+    try:
+        from image_config import redact_text
+        reason = redact_text(reason)
+    except ImportError:
+        pass
     rec = {"figure_id": figure_id, "ts": _now(), "status": status,
            "artifact": artifact.replace("\\", "/") if artifact else None,
            "sha256": sha or (_sha(ap) if ap else None), "reason": reason,
@@ -381,6 +388,35 @@ def generate_figure(root, figure_id, provider="local"):
         save_plan(root, specs, provider=provider)
     for sp in specs:
         if str(sp.get("figure_id")) == figure_id:
+            # v1.6.5 Phase 2A fallback 契约（image_provider.route）：
+            # 仅当 spec 显式声明 provider 字段才走路由解析——旧 spec（无该字段）
+            # 与 v1.6.0 行为逐字节一致（不读任何 env、不触碰 ~/.aeromech）。
+            if sp.get("provider") and sp["provider"] != "local":
+                import image_provider as IP
+                dec = IP.route(sp)
+                if dec["needs_configuration"]:
+                    rec = record(root, figure_id, "NEEDS_HUMAN_REVIEW",
+                                 artifact=sp.get("out"),
+                                 reason="NEEDS_CONFIGURATION: " + dec["reason"],
+                                 provider=sp["provider"])
+                    return _result(figure_id, "NEEDS_HUMAN_REVIEW", sp.get("out"),
+                                   None, rec, reason="NEEDS_CONFIGURATION")
+                if dec["provider"] == "local":
+                    res = get_provider("local").generate(root, sp)
+                    if res.get("status") in STATUS_OK and dec.get("fallback_from"):
+                        record(root, figure_id, res["status"],
+                               artifact=res.get("artifact"),
+                               reason="fallback_to_existing_pipeline: "
+                                      + str(dec["fallback_from"]),
+                               provider="local")
+                    return res
+                # Phase 2A 无真实 external backend：route 只会返回 local/None，
+                # 走到这里属实现缺口 → 明确失败，绝不 fake image。
+                rec = record(root, figure_id, "REJECTED",
+                             reason="external backend 未实现（Phase 2B），不 fake 生成",
+                             provider=sp["provider"])
+                return _result(figure_id, "REJECTED", None, None, rec,
+                               reason="EXTERNAL_NOT_IMPLEMENTED")
             return prov.generate(root, sp)
     return {"figure_id": figure_id, "status": "REJECTED", "artifact": None,
             "reason": f"计划中无 {figure_id}", "sha256": None, "quality": []}
