@@ -93,12 +93,24 @@ def route(spec, required=None):
                 "fallback_from": f"external_{r.state.lower()}",
                 "reason": "外部配置异常（" + IC.redact_text(r.reason)[:80] +
                           "）→ 回落既有管线，不阻塞交付"}
-    # AVAILABLE：Phase 2A 尚无真实 backend——不 fake、不 BLOCK，回落既有管线并记录
+    # 已配置且 backend 已实现真实调用 → 走 external（route 只决策，不 HTTP）
+    try:
+        import image_backends as IB
+        implemented = r.backend in getattr(IB, "BACKENDS", {})
+    except Exception:
+        implemented = False
+    if r.state == IC.STATE_AVAILABLE and implemented:
+        return {**base, "provider": "external_image", "external_state": r.state,
+                "external_configured": True, "external_backend": r.backend,
+                "external_model": r.model, "external_base_url": r.base_url,
+                "credential": r.credential, "fallback_from": None,
+                "reason": "external backend 已配置且实现（受控闸在 ai_figure_gate）"}
+    # AVAILABLE 但 backend 未实现真实调用 → 不 fake、回落既有管线并记录
     return {**base, "provider": "local", "external_state": r.state,
             "external_configured": True, "external_backend": r.backend,
             "fallback_from": EXTERNAL_NOT_IMPLEMENTED,
-            "reason": "external 已配置（backend=%s）；Phase 2A 未接入真实调用，"
-                      "回落既有管线（Phase 2B 启用）" % r.backend}
+            "reason": "external 已配置（backend=%s）；该 backend 未实现真实调用，"
+                      "回落既有管线（不 fake）" % r.backend}
 
 
 def describe(res):

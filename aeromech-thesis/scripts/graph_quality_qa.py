@@ -335,8 +335,11 @@ def check_chart_render(rep, doc, key, meta, pg, r):
     def to_px(x_cm, y_cm):
         return ((r.x0 + x_cm / Wc * r.width) * D, (r.y0 + (Hc - y_cm) / Hc * r.height) * D)
 
-    lx0, ly0 = to_px(0.0, axr[3])
-    lx1, ly1 = to_px(axr[0] - 0.06, axr[1])
+    # 裁剪列上缘 = 顶刻度 + 0.25cm（覆盖以 va=center 骑在顶刻度线上的末行标签，
+    # 12pt 半字高≈0.21cm；不取画布顶以免把图内 note 文字行算进簇数）；
+    # 下缘 = 画布底（基线刻度标签如 "0" 骑在轴线上，取轴线做底边会截断它 → 假 FAIL）。
+    lx0, ly0 = to_px(0.0, min(Hc, axr[3] + 0.25))
+    lx1, ly1 = to_px(axr[0] - 0.06, 0.0)
     crop = np.array(img.crop((max(0, int(lx0)), max(0, int(ly0)),
                               int(lx1), int(ly1))).convert("L"))
     dark = (crop < 128).sum(axis=1)
@@ -357,7 +360,10 @@ def check_chart_render(rep, doc, key, meta, pg, r):
         runs.append(cur)
     hs = [b - a + 1 for a, b in runs if (b - a + 1) > 15]
     hmed = sorted(hs)[len(hs) // 2] if hs else 0
-    need_px = 0.9 * 9.5 / 72 * 300
+    # 字形墨高校准：0.9em 仅对 CJK 成立；数字/拉丁实际墨高≈0.72em（大写字高、
+    # 无降部）。y 轴刻度列为数字（如 0/10/20/30/40），按 0.72em 计算可读阈值，
+    # 9.5pt 的字号要求本身不变（精度修复，不是放松标准）。
+    need_px = 0.72 * 9.5 / 72 * 300
     ok16 = eff >= 9.5 and len(hs) == n_ylab and hmed >= need_px
     rep.add(f"GQ-16 图{key}最终PDF文字可读", ok16,
             f"有效字号 {eff:.1f}pt（≥9.5）；300dpi 渲染标签行 {len(hs)}/{n_ylab} 簇、"

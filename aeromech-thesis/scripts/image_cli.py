@@ -67,7 +67,7 @@ def _cmd_status(_a):
     return {"AVAILABLE": 0, "UNAVAILABLE": 0, "INVALID": 1, "FAILED": 3}[pub["state"]]
 
 
-def _cmd_test(_a):
+def _cmd_test(a):
     r = IC.resolve(required=True)
     if r.state == IC.STATE_UNAVAILABLE and not r.credential:
         print("No external image provider configured.")
@@ -78,12 +78,29 @@ def _cmd_test(_a):
     print(f"Model:      {pub['model'] or '(unset)'}")
     print(f"Credential: {pub['credential']}")
     print(f"Source:     {pub['source']}")
-    if r.state == IC.STATE_AVAILABLE:
-        print("Connection: not tested "
-              "(external backend not implemented until Phase 2B — 不伪造 OK)")
+    if r.state != IC.STATE_AVAILABLE:
+        print(f"State:      {r.state} | {pub['reason']}")
+        return 1 if r.state == IC.STATE_INVALID else 0
+    # 真实 smoke（§十一）：仅用户主动执行 image test 才外呼一次最小生成；
+    # 普通回归/构建从不调用此路径。任何输出不含 Key。
+    import image_backends as IB
+    if a.no_network:
+        print("Generation: skipped (--no-network)")
         return 0
-    print(f"State:      {r.state} | {pub['reason']}")
-    return 1 if r.state == IC.STATE_INVALID else 0
+    print("[image test] 将使用您配置的 Key 发起一次最小真实生成，可能产生少量 API 费用。")
+    try:
+        backend = IB.get_backend(r.backend, r.credential, model=r.model,
+                                 base_url=r.base_url)
+        ok = backend.check()
+        print("Generation: OK" if ok else "Generation: FAILED (empty response)")
+        return 0 if ok else 1
+    except IB.ImageError as e:
+        print(f"Generation: FAILED | {e.code}")     # e 已源头脱敏
+        return 1
+    except Exception as e:
+        print("Generation: FAILED | GENERATION_FAILED | "
+              + IC.redact_text(f"{type(e).__name__}"))
+        return 1
 
 
 def _cmd_remove(a):
@@ -102,7 +119,9 @@ def main(argv=None):
     c = sub.add_parser("config")
     c.add_argument("--backend"); c.add_argument("--model"); c.add_argument("--base-url")
     sub.add_parser("status")
-    sub.add_parser("test")
+    t = sub.add_parser("test")
+    t.add_argument("--no-network", action="store_true", dest="no_network",
+                   help="只解析配置不外呼（离线检查）")
     r = sub.add_parser("remove"); r.add_argument("--backend", required=True)
     a = ap.parse_args(argv)
     try:

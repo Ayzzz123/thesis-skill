@@ -36,7 +36,7 @@ import figure_iface as FI
 import secret_leak_qa as SL
 import thesis_orchestrator as ORCH
 
-LIVE = "sk-LIVE1234567890abcdef1234"
+LIVE = "sk-LIVE1234567890abcdef1234"  # secret-scan-exempt（测试样本，非真实凭据）
 BS = chr(92)     # 形态像真 Key 的合成样本（非白名单）
 
 
@@ -50,7 +50,7 @@ def main():
         ("OPENAI_API_KEY=" + LIVE, LIVE),
         ("url https://x.y/z?key=" + LIVE, LIVE),
         ("AIzaSy" + "Q" * 30, None),
-        ("token eyJhbGciOiJIUzI1NiIsInR5cCI6.SOWq8d93jd0amcasd123", None),
+        ("token eyJhbGciOiJIUzI1NiIsInR5cCI6.SOWq8d93jd0amcasd123", None),  # secret-scan-exempt（测试样本）
     ]
     ok = all(IC.redact_text(s) == IC.redact_text(s).replace(LIVE, "") and
              LIVE not in IC.redact_text(s) for s, _ in cases)

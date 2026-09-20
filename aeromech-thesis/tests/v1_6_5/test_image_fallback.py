@@ -136,9 +136,16 @@ def main():
                 break
         else:
             check("FB-04 五类确定性图 external 可用时仍 local 优先", True)
-        # 概念图 + 已配置 → Phase 2A：不 fake、回落 local 并记录未实现
+        # 概念图 + 已配置且 backend 已实现 → route 决策 external（route 零网络；
+        # 真实 HTTP 在 _generate_external 内受 Plan 闸控制）
         d = IP.route({"provider": "image", "type": "conceptual_illustration"})
-        check("FB-04b Phase2A 已配置 external→不 fake（回落+not_implemented 标记）",
+        check("FB-04b 已配置 openai + 概念图→route=external_image（不 fake 回落）",
+              d["provider"] == "external_image" and d["fallback_from"] is None)
+        # 未实现真实调用的 backend（zhipu）→ 仍回落既有管线，不 fake
+        os.environ["IMAGE_BACKEND"] = "zhipu"
+        os.environ["ZHIPU_API_KEY"] = "sk-TEST-zhipuplaceholder0000000"
+        d = IP.route({"provider": "image", "type": "conceptual_illustration"})
+        check("FB-04c 未实现 backend 配置→回落既有管线（EXTERNAL_NOT_IMPLEMENTED）",
               d["provider"] == "local"
               and d["fallback_from"] == IP.EXTERNAL_NOT_IMPLEMENTED)
 

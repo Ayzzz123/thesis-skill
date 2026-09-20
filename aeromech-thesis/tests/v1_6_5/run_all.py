@@ -19,6 +19,7 @@ TESTS = [
     "test_image_resolution.py",
     "test_image_fallback.py",
     "test_image_security.py",
+    "test_image_external.py",
 ]
 
 

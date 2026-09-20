@@ -28,6 +28,15 @@ import sys
 ENTROPY_MIN = 3.5
 LONG_RUN = 20
 
+# 行级豁免标记（v1.6.5 最终阶段）：安全测试自身需要"非白名单形态"的样本
+# （如 LIVE 形态 sk-、JWT）来验证扫描器确实能抓住它们——这些样本是测试数据，
+# 不是凭据。豁免纪律（可审计）：
+#   1. 仅作用于 tests/ 路径（repo scope：_exempt_for；diff scope：tests/ hunk）；
+#   2. 标记必须出现在文件头 40 行内（repo scope）——说明"本文件是安全测试"；
+#   3. 豁免是行级的：只有同一行上带标记的命中降级为 WARN，其余行照常 FAIL。
+EXEMPT_MARK = "secret-scan-exempt"
+_EXEMPT_HEADER_LINES = 40
+
 _PATTERNS = [
     ("api_key_assign", re.compile(
         r"(?i)\b(?:api[_-]?key|access[_-]?token|auth[_-]?token|client[_-]?secret|"
@@ -56,8 +65,37 @@ def _shannon_entropy(s):
     return -sum((c / n) * math.log2(c / n) for c in freq.values())
 
 
-def scan_text(text, name):
-    """返回 [(kind, severity, name, snippet)]；severity ∈ FAIL/WARN。"""
+def _line_at(text, pos):
+    """返回 pos 所在的整行文本。"""
+    start = text.rfind("\n", 0, pos) + 1
+    end = text.find("\n", pos)
+    return text[start:end if end >= 0 else None]
+
+
+def _exempt_for(rel_name, text):
+    """repo scope 的行级豁免资格：仅 tests/ 文件且标记在头 40 行内。"""
+    if "tests/" not in rel_name.replace("\\", "/"):
+        return False
+    return EXEMPT_MARK in "\n".join(text.splitlines()[:_EXEMPT_HEADER_LINES])
+
+
+def _diff_exempt(text):
+    """diff scope：仅当存在 tests/ 文件的新增行携带标记时允许行级豁免。"""
+    path = None
+    for ln in text.splitlines():
+        if ln.startswith("+++ b/"):
+            path = ln[6:].strip()
+        elif ln.startswith("+") and EXEMPT_MARK in ln and path and "tests/" in path:
+            return True
+    return False
+
+
+def scan_text(text, name, exempt_lines=False):
+    """返回 [(kind, severity, name, snippet)]；severity ∈ FAIL/WARN。
+
+    exempt_lines=True 时，与标记同行的命中降级为 WARN（exempt-line），
+    其余行照常 FAIL——豁免粒度是行，不是文件。
+    """
     hits = []
     for kind, rx in _PATTERNS:
         for m in rx.finditer(text):
@@ -66,6 +104,10 @@ def scan_text(text, name):
                 continue
             if "tests/" in name and "sk-TEST-" in m.group(0):
                 continue                     # 合成样本白名单（仅 tests/ 目录）
+            if exempt_lines and EXEMPT_MARK in _line_at(text, m.start()):
+                hits.append((kind, "WARN", name,
+                             "exempt-line: " + m.group(0)[:60].replace("\n", " ")))
+                continue
             hits.append((kind, "FAIL", name, m.group(0)[:60].replace("\n", " ")))
     # 高熵启发（不判 FAIL，只 WARN 供人工）
     for m in re.finditer(r"\b[A-Za-z0-9+/_\-]{%d,}\b" % LONG_RUN, text):
@@ -159,10 +201,10 @@ def run(root, scope="all"):
     all_hits = []
     if scope in ("repo", "all"):
         for name, txt in _iter_git_tracked(root):
-            all_hits += scan_text(txt, name)
+            all_hits += scan_text(txt, name, exempt_lines=_exempt_for(name, txt))
     if scope in ("diff", "all"):
         for name, txt in _iter_staged_diff(root):
-            all_hits += scan_text(txt, name)
+            all_hits += scan_text(txt, name, exempt_lines=_diff_exempt(txt))
     if scope in ("artifacts", "all"):
         for name, txt in _iter_artifacts(root):
             all_hits += scan_text(txt, name)
