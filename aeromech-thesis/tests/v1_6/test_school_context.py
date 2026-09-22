@@ -102,6 +102,87 @@ def main():
     rc2 = SR.main([root5, "parse", "--json"])
     check("positive CLI 空项目也成功（全 unknown 合法）", rc2 == 0)
 
+    # ---------- v1.6.5 E2E-FINDING-1：school 子目录递归发现（CURRENT/FORMS/REFERENCE） ----------
+    import docx as _docx
+    import template_fidelity as TF
+
+    def _mkdocx(path):
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        d = _docx.Document()
+        d.add_paragraph("测试文档")
+        d.save(path)
+
+    # A. school/CURRENT/template.docx 能够被发现（递归 + 母版候选）
+    rootA = os.path.join(tmp, "subA")
+    _mkdocx(os.path.join(rootA, "materials", "school", "CURRENT", "template.docx"))
+    docsA = TF.iter_school_docs(os.path.join(rootA, "materials", "school"))
+    check("A CURRENT/template.docx 被递归发现且 role=school",
+          docsA == [(os.path.join(rootA, "materials", "school", "CURRENT",
+                                        "template.docx"), "school")], str(docsA))
+    modeA, tplA = TF.select_docx_mode(os.path.join(rootA, "materials", "school"))
+    check("A select_docx_mode 递归命中 CURRENT 母版",
+          modeA == TF.MODE_TEMPLATE_FIDELITY and tplA and
+          tplA.endswith(os.path.join("CURRENT", "template.docx")))
+
+    # B. school/CURRENT/format_spec.docx 能够作为 school_template
+    rootB = os.path.join(tmp, "subB")
+    _mkdocx(os.path.join(rootB, "materials", "school", "CURRENT", "format_spec.docx"))
+    fB, mB, _cB = SR.parse(rootB)
+    check("B CURRENT/format_spec.docx → format_source=school_template",
+          mB["format_source"] == "school_template", str(mB))
+    check("B 母版定位到 CURRENT/format_spec.docx",
+          mB["template_file"] and mB["template_file"].endswith(
+              os.path.join("CURRENT", "format_spec.docx")))
+
+    # C. school/REFERENCE/sample.docx 不能成为当前学校格式依据
+    rootC = os.path.join(tmp, "subC")
+    _mkdocx(os.path.join(rootC, "materials", "school", "REFERENCE", "sample.docx"))
+    docsC = TF.iter_school_docs(os.path.join(rootC, "materials", "school"))
+    check("C REFERENCE/sample.docx role=reference（被识别为参考）",
+          docsC == [(os.path.join(rootC, "materials", "school", "REFERENCE",
+                                  "sample.docx"), "reference")], str(docsC))
+    fC, mC, _cC = SR.parse(rootC)
+    srcsC = [v.get("source_material") for k, v in fC.items()
+             if isinstance(v, dict) and v.get("source_material")]
+    check("C REFERENCE 不进入字段 provenance（无 official/sample 来自它）",
+          not any("REFERENCE" in str(s) for s in srcsC), str(srcsC))
+    check("C REFERENCE 在场→format_source 不升级（general_default）",
+          mC["format_source"] == "general_default", str(mC))
+    check("C 排除登记进 _notes",
+          "REFERENCE/ 参考材料 1 份不参与当前学校格式依据" in str(fC.get("_notes")))
+    modeC, tplC = TF.select_docx_mode(os.path.join(rootC, "materials", "school"))
+    check("C REFERENCE 的 docx 不承担母版", modeC == TF.MODE_FORMAT_RECONSTRUCTION
+          and tplC is None)
+
+    # D. school/FORMS/task.docx 不能成为当前学校格式模板
+    rootD = os.path.join(tmp, "subD")
+    _mkdocx(os.path.join(rootD, "materials", "school", "FORMS", "task.docx"))
+    modeD, tplD = TF.select_docx_mode(os.path.join(rootD, "materials", "school"))
+    check("D FORMS/task.docx 不承担母版（FORMAT_RECONSTRUCTION/None）",
+          modeD == TF.MODE_FORMAT_RECONSTRUCTION and tplD is None)
+    fD, mD, _cD = SR.parse(rootD)
+    check("D FORMS 不进入字段提取（format_source 保持 general_default）",
+          mD["format_source"] == "general_default" and
+          not mD["template_file"], str(mD))
+    check("D 排除登记进 _notes",
+          "FORMS/ 过程表格 1 份不参与论文格式识别" in str(fD.get("_notes")))
+
+    # E. 没有 CURRENT 时既有行为不变：扁平布局照常发现（旧契约回归）
+    rootE = os.path.join(tmp, "subE")
+    _mkdocx(os.path.join(rootE, "materials", "school", "母版模板.docx"))
+    docsE = TF.iter_school_docs(os.path.join(rootE, "materials", "school"))
+    check("E 旧扁平布局仍 role=school（向后兼容）",
+          docsE == [(os.path.join(rootE, "materials", "school", "母版模板.docx"),
+                     "school")], str(docsE))
+    modeE, tplE = TF.select_docx_mode(os.path.join(rootE, "materials", "school"))
+    check("E 扁平布局母版照常命中", modeE == TF.MODE_TEMPLATE_FIDELITY
+          and tplE and tplE.endswith("母版模板.docx"))
+    rootE2 = os.path.join(tmp, "subE2")
+    os.makedirs(os.path.join(rootE2, "materials", "school"), exist_ok=True)
+    modeE2, tplE2 = TF.select_docx_mode(os.path.join(rootE2, "materials", "school"))
+    check("E2 空学校目录（含子目录契约）→ FORMAT_RECONSTRUCTION/None 不变",
+          modeE2 == TF.MODE_FORMAT_RECONSTRUCTION and tplE2 is None)
+
     shutil.rmtree(tmp, ignore_errors=True)
     print(f"test_school_context 结果: PASS={PASS} FAIL={FAIL}")
     return 1 if FAIL else 0

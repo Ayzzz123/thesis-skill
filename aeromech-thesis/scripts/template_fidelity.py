@@ -35,18 +35,48 @@ DOC_LEGACY_EXTS = (".doc",)  # Word 97-2003 OLE2，不能直接作 OOXML 母版�
 
 
 # ---------------- 模式选择 ----------------
+def iter_school_docs(school_dir):
+    """学校资料递归发现（v1.6.5 E2E-FINDING-1 修复：目录契约与 CURRENT/FORMS/REFERENCE
+    子目录布局对齐，旧扁平布局行为不变）。
+    返回 [(abs_path, role)]，role ∈ {"school","forms","reference"}：
+      - 顶层文件与 CURRENT/**  → "school"：可进入格式识别、可承担母版；
+      - FORMS/**                → "forms"：过程表格，不作为论文格式依据/母版候选；
+      - REFERENCE/**            → "reference"：参考材料，不参与当前学校格式依据。
+    排序稳定（school → forms → reference，组内按完整路径排序）；~$ 临时文件跳过；
+    返回 SCHOOL_EXTS（.docx/.dotx）及 .pdf/.doc（parse 的 PDF 登记与 legacy 提示
+    依赖它们；母版选择仅取 SCHOOL_EXTS，由 select_docx_mode 自过滤）。"""
+    if not school_dir or not os.path.isdir(school_dir):
+        return []
+    groups = {"school": [], "forms": [], "reference": []}
+    accept = SCHOOL_EXTS + DOC_LEGACY_EXTS + (".pdf",)
+    for dp, _dns, fns in os.walk(school_dir):
+        rel = os.path.relpath(dp, school_dir).replace("\\", "/")
+        first = rel.split("/")[0] if rel != "." else ""
+        role = {"CURRENT": "school", "FORMS": "forms",
+                "REFERENCE": "reference"}.get(first, "school")
+        for fn in fns:
+            low = fn.lower()
+            if low.endswith(accept) and not fn.startswith("~$"):
+                groups[role].append(os.path.join(dp, fn))
+    return ([(p, "school") for p in sorted(groups["school"])] +
+            [(p, "forms") for p in sorted(groups["forms"])] +
+            [(p, "reference") for p in sorted(groups["reference"])])
+
+
 def select_docx_mode(school_dir):
-    """school_dir 下存在可编辑 OOXML Word 模板（.docx/.dotx）-> TEMPLATE_FIDELITY；
-    否则 FORMAT_RECONSTRUCTION。
+    """school_dir 的 school 角色文件中存在可编辑 OOXML Word 模板（.docx/.dotx）
+    -> TEMPLATE_FIDELITY；否则 FORMAT_RECONSTRUCTION。
     注意：legacy .doc 不在识别范围（不能直接承担母版角色）——请先用
     detect_legacy_docs() 检测、convert_legacy_doc() 转换并分析转换产物性质
     （见 references/template-fidelity.md §11）。
+    递归发现经 iter_school_docs（顶层与 CURRENT/；FORMS/REFERENCE 不承担母版角色）。
     返回 (mode, template_path_or_None)。"""
     if school_dir and os.path.isdir(school_dir):
-        for fn in sorted(os.listdir(school_dir)):
-            low = fn.lower()
-            if low.endswith(SCHOOL_EXTS) and not low.startswith("~$"):
-                return MODE_TEMPLATE_FIDELITY, os.path.join(school_dir, fn)
+        for path, role in iter_school_docs(school_dir):
+            if role != "school":
+                continue
+            if path.lower().endswith(SCHOOL_EXTS):
+                return MODE_TEMPLATE_FIDELITY, path
     return MODE_FORMAT_RECONSTRUCTION, None
 
 

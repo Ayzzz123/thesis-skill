@@ -144,12 +144,16 @@ def parse(root):
     fields = {k: {"value": None, "provenance": "unknown", "source_material": None} for k in FIELD_KEYS}
     conflicts = []
     docs = []
+    excluded = {"forms": [], "reference": []}
     if school:
-        for fn in sorted(os.listdir(school)):
-            low = fn.lower()
-            if low.startswith("~$") or not low.endswith((".docx", ".dotx", ".doc", ".pdf")):
-                continue
-            docs.append((os.path.join(school, fn), "school"))
+        # v1.6.5 E2E-FINDING-1：递归发现（对齐 CURRENT/FORMS/REFERENCE 子目录契约，
+        # 旧扁平布局不变）。FORMS/REFERENCE 不参与字段提取、不承担母版（仅登记）。
+        import template_fidelity as TF
+        for path, role in TF.iter_school_docs(school):
+            if role == "school":
+                docs.append((path, "school"))
+            else:
+                excluded[role].append(os.path.relpath(path, root).replace("\\", "/"))
     sample_docs = []
     if samples:
         sample_docs = [os.path.join(samples, fn) for fn in sorted(os.listdir(samples))
@@ -171,6 +175,12 @@ def parse(root):
 
     official_template = None
     fields.setdefault("_notes", {"value": [], "provenance": "unknown", "source_material": None})
+    if excluded["forms"]:
+        fields["_notes"]["value"].append(
+            "FORMS/ 过程表格 %d 份不参与论文格式识别（不得作为母版）" % len(excluded["forms"]))
+    if excluded["reference"]:
+        fields["_notes"]["value"].append(
+            "REFERENCE/ 参考材料 %d 份不参与当前学校格式依据" % len(excluded["reference"]))
     for path, _ in docs:
         fn = os.path.basename(path)
         rel = os.path.relpath(path, root).replace("\\", "/")
