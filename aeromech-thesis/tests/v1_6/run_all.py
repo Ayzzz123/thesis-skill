@@ -30,6 +30,7 @@ TESTS = [
     "test_thesis_build.py",
     "test_delivery_gate.py",
     "test_document_contract.py",
+    "test_omml_word_compat.py",
 ]
 
 

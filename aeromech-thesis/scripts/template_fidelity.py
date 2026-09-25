@@ -15,6 +15,7 @@ import re
 import shutil
 
 from docx import Document
+from docx.enum.style import WD_STYLE_TYPE
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.enum.section import WD_SECTION
 from docx.oxml import OxmlElement
@@ -243,6 +244,248 @@ def toc_field_para(doc):
     f3 = OxmlElement("w:fldChar"); f3.set(qn("w:fldCharType"), "end")
     run._r.append(f1); run._r.append(it); run._r.append(f2); run._r.append(t); run._r.append(f3)
     return p
+
+
+# ---------------- OMML 公式生成（自 .codex/thesis-1.0 生成链迁移；已过 Word COM 实证） ----------------
+def _latex_to_word_linear(text):
+    """Convert the thesis' common LaTeX math commands to Word UnicodeMath input."""
+    text = text.replace(r"\left", "").replace(r"\right", "")
+    text = text.replace(r"\qquad", ", ").replace(r"\quad", ", ")
+    text = text.replace(r"\ge", "≥").replace(r"\le", "≤")
+    text = text.replace(r"\min", "min").replace(r"\exp", "exp")
+    text = text.replace(r"\alpha", "α").replace(r"\beta", "β")
+    text = text.replace(r"\hat{y}", "ŷ").replace(r"\hat y", "ŷ")
+
+    def braced(text, start):
+        if start >= len(text) or text[start] != "{":
+            return None, start
+        depth = 0
+        for end in range(start, len(text)):
+            depth += (text[end] == "{") - (text[end] == "}")
+            if depth == 0:
+                return text[start + 1:end], end + 1
+        return None, start
+
+    for command in (r"\sqrt", r"\frac"):
+        pos = 0
+        while True:
+            at = text.find(command, pos)
+            if at < 0:
+                break
+            first, end = braced(text, at + len(command))
+            if first is None:
+                pos = at + len(command)
+                continue
+            if command == r"\sqrt":
+                replacement = f"√({first})"
+            else:
+                second, end2 = braced(text, end)
+                if second is None:
+                    pos = end
+                    continue
+                replacement = f"({first})/({second})"
+                end = end2
+            text = text[:at] + replacement + text[end:]
+            pos = at + len(replacement)
+
+    text = re.sub(r"\\sum_\{([^{}]+)\}(?:\^\{([^{}]+)\}|\^([A-Za-z0-9]+))?",
+                  lambda m: "∑_(" + m.group(1) + ")" +
+                  ("^" + (m.group(2) or m.group(3)) if (m.group(2) or m.group(3)) else ""), text)
+    text = re.sub(r"\\sum(?:\^\{([^{}]+)\}|\^([A-Za-z0-9]+))?",
+                  lambda m: "∑" + ("^" + (m.group(1) or m.group(2))
+                                    if (m.group(1) or m.group(2)) else ""), text)
+    text = re.sub(r"\\([A-Za-z]+)", r"\1", text)
+    text = text.replace("\\", " ").replace("{", "(").replace("}", ")")
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _math_run(parent, text):
+    run = OxmlElement("m:r")
+    node = OxmlElement("m:t")
+    node.text = text
+    run.append(node)
+    parent.append(run)
+    return run
+
+
+def _math_sub(parent, base, sub):
+    node = OxmlElement("m:sSub")
+    expr = OxmlElement("m:e")
+    _math_run(expr, base)
+    sub_expr = OxmlElement("m:sub")
+    _math_run(sub_expr, sub)
+    node.append(expr)
+    node.append(sub_expr)
+    parent.append(node)
+    return node
+
+
+def _math_sup(parent, base, sup):
+    node = OxmlElement("m:sSup")
+    expr = OxmlElement("m:e")
+    _math_run(expr, base)
+    sup_expr = OxmlElement("m:sup")
+    _math_run(sup_expr, sup)
+    node.append(expr)
+    node.append(sup_expr)
+    parent.append(node)
+    return node
+
+
+def _math_yhat_sub(parent):
+    sub = OxmlElement("m:sSub")
+    accent = OxmlElement("m:acc")
+    accent_props = OxmlElement("m:accPr")
+    char = OxmlElement("m:chr"); char.set(qn("m:val"), "^")
+    accent_props.append(char)
+    accent.append(accent_props)
+    expr = OxmlElement("m:e"); _math_run(expr, "y")
+    accent.append(expr)
+    # Word 严格校验 CT_SSub：基底必须包在 m:e 中（裸 acc 会被判"文件已损坏"）
+    base = OxmlElement("m:e")
+    base.append(accent)
+    sub.append(base)
+    index = OxmlElement("m:sub"); _math_run(index, "i")
+    sub.append(index)
+    parent.append(sub)
+    return sub
+
+
+def _math_squared_difference(parent):
+    power = OxmlElement("m:sSup")
+    group = OxmlElement("m:d")
+    delimiters = OxmlElement("m:dPr")
+    begin = OxmlElement("m:begChr"); begin.set(qn("m:val"), "(")
+    end = OxmlElement("m:endChr"); end.set(qn("m:val"), ")")
+    delimiters.append(begin); delimiters.append(end)
+    group.append(delimiters)
+    expr = OxmlElement("m:e")
+    _math_yhat_sub(expr)
+    _math_run(expr, " − ")
+    _math_sub(expr, "y", "i")
+    group.append(expr)
+    # Word 严格校验 CT_SSup：基底必须包在 m:e 中（裸 d 会被判"文件已损坏"）
+    base = OxmlElement("m:e")
+    base.append(group)
+    power.append(base)
+    exponent = OxmlElement("m:sup"); _math_run(exponent, "2")
+    power.append(exponent)
+    parent.append(power)
+    return power
+
+
+def _math_fraction(parent, numerator_fn, denominator):
+    node = OxmlElement("m:f")
+    numerator = OxmlElement("m:num")
+    numerator_expr = OxmlElement("m:e")
+    numerator_fn(numerator_expr)
+    numerator.append(numerator_expr)
+    denominator_node = OxmlElement("m:den")
+    denominator_expr = OxmlElement("m:e")
+    _math_run(denominator_expr, denominator)
+    denominator_node.append(denominator_expr)
+    node.append(numerator)
+    node.append(denominator_node)
+    parent.append(node)
+    return node
+
+
+def _math_sum(parent, absolute=False):
+    node = OxmlElement("m:nary")
+    props = OxmlElement("m:naryPr")
+    char = OxmlElement("m:chr"); char.set(qn("m:val"), "∑")
+    lim = OxmlElement("m:limLoc"); lim.set(qn("m:val"), "undOvr")
+    props.append(char); props.append(lim)
+    node.append(props)
+    sub = OxmlElement("m:sub")
+    _math_run(sub, "i=1")
+    node.append(sub)
+    sup = OxmlElement("m:sup")
+    _math_run(sup, "N")
+    node.append(sup)
+    expr = OxmlElement("m:e")
+    if absolute:
+        _math_run(expr, "|")
+    if absolute:
+        _math_run(expr, "|")
+        _math_yhat_sub(expr)
+        _math_run(expr, " − ")
+        _math_sub(expr, "y", "i")
+        _math_run(expr, "|")
+    else:
+        _math_squared_difference(expr)
+    node.append(expr)
+    parent.append(node)
+    return node
+
+
+def _append_omml_equation(p, kind):
+    para = OxmlElement("m:oMathPara")
+    para_props = OxmlElement("m:oMathParaPr")
+    jc = OxmlElement("m:jc"); jc.set(qn("m:val"), "center")
+    para_props.append(jc)
+    para.append(para_props)
+    equation = OxmlElement("m:oMath")
+    if kind == "rul":
+        _math_sub(equation, "y", "i,t")
+        _math_run(equation, " = min(")
+        _math_sub(equation, "T", "i")
+        _math_run(equation, " − t, 125).")
+    elif kind == "rmse":
+        _math_run(equation, "RMSE = ")
+        radical = OxmlElement("m:rad")
+        radical_props = OxmlElement("m:radPr")
+        hide_degree = OxmlElement("m:degHide"); hide_degree.set(qn("m:val"), "1")
+        radical_props.append(hide_degree)
+        radical.append(radical_props)
+        radical.append(OxmlElement("m:deg"))
+        expr = OxmlElement("m:e")
+        _math_fraction(expr, lambda n: _math_sum(n, absolute=False), "N")
+        radical.append(expr)
+        equation.append(radical)
+    elif kind == "mae":
+        _math_run(equation, "MAE = ")
+        _math_fraction(equation, lambda n: _math_sum(n, absolute=True), "N")
+        _math_run(equation, ".")
+    else:
+        raise ValueError(f"Unsupported display equation: {kind}")
+    para.append(equation)
+    p._p.append(para)
+
+
+def _add_equation(doc, source):
+    try:
+        style = doc.styles["AMT Equation"]
+    except KeyError:
+        style = doc.styles.add_style("AMT Equation", WD_STYLE_TYPE.PARAGRAPH)
+    style.font.name = "Cambria Math"
+    style.font.size = Pt(11)
+    text = source.strip()
+    kinds = []
+    if re.search(r"\\hat\s*y_i.*\\sum", text):
+        kinds = ["rmse", "mae"]
+    elif re.search(r"y_\{i,t\}.*\\min", text):
+        kinds = ["rul"]
+    if not kinds:
+        raise ValueError(f"No native OMML mapping for display equation: {text}")
+    paragraphs = []
+    for kind in kinds:
+        p = doc.add_paragraph(style=style)
+        ppr(p, line=360, rule="auto", jc="center", keep_next=True)
+        _append_omml_equation(p, kind)
+        paragraphs.append(p)
+    return paragraphs[0]
+
+
+def _inline_math_text(text):
+    text = re.sub(r"\\\((.+?)\\\)",
+                  lambda m: _latex_to_word_linear(m.group(1)), text)
+    if "\\" in text:
+        text = (text.replace(r"\hat{y}", "ŷ").replace(r"\hat y", "ŷ")
+                .replace(r"\exp", "exp").replace(r"\ge", "≥")
+                .replace(r"\le", "≤").replace(r"\alpha", "α"))
+        text = re.sub(r"\\([A-Za-z]+)", r"\1", text)
+    return text
 
 
 # ---------------- 母版修剪 ----------------
