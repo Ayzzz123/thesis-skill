@@ -4,8 +4,11 @@
 
 | 角色 | 路径 | 说明 |
 |---|---|---|
-| **开发（权威源）** | `C:\Users\29603\Desktop\thesis-skill\aeromech-thesis` | 唯一允许编辑的位置 |
-| 安装（运行副本） | `C:\Users\29603\.qoder-cn\skills\aeromech-thesis` | Skill 实际加载处，只由同步器写入 |
+| **开发（权威源）** | 本仓库的 `aeromech-thesis/`（由 `sync.py` 按自身位置推导；可用 `AEROMECH_DEV_ROOT` 覆盖） | 唯一允许编辑的位置 |
+| 安装（运行副本） | `~/.qoder-cn/skills/aeromech-thesis` 等（可用 `AEROMECH_INSTALL_ROOT` 覆盖） | Skill 实际加载处，只由同步器写入 |
+
+> 路径不再写死具体用户名/盘符：`sync.py` 与 `tests/v1_4_1/test_dev_install_sync.py`
+> 均按文件位置动态推导，仓库整体移动后无需改配置。
 
 **禁止把安装目录当作开发源**：在 `~\.qoder-cn\skills\` 内的手改会被下一次同步覆盖。
 
@@ -13,8 +16,10 @@
 
 ```bash
 # 1) 在开发目录改代码/文档
-# 2) 跑测试（开发侧）
-python tests/v1_4/run_all.py && python tests/v1_4_1/run_all.py && python tests/v1_5/run_all.py
+# 2) 跑全部测试（统一入口，含 v1_4/v1_4_1/v1_5/v1_6/v1_6_5/Test A/Test B）
+python tests/run_all.py
+#    只跑单个套件：python tests/run_all.py --only v1_6
+#    列出套件：    python tests/run_all.py --list
 # 3) 预览将要发生的变更（不落盘）
 python sync.py --to-install --dry-run
 # 4) 同步到安装目录并校验
@@ -22,6 +27,10 @@ python sync.py --to-install
 python sync.py --check        # 期望输出 IDENTICAL，rc=0
 # 5) 安装侧回归（真实加载路径）
 ```
+
+**测试入口语义（`tests/run_all.py`）**：任一套件存在真实 FAIL → 总体 FAIL（rc=1）；
+任一套件只有 SKIP 而无 PASS → 记为"未验证"并使总体 FAIL；SKIP 永不计入 PASS；
+各套件自身的退出码与断言语义保持不变。汇总行统一给出 `PASS / FAIL / SKIP` 计数。
 
 ## 同步器安全护栏（v1.5.0）
 

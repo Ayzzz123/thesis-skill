@@ -79,7 +79,7 @@ STEP_DOMAINS = [
 ]
 ITEM_RE = re.compile(
     r"^- (.+?)[:：] ?(PASS|FAIL|SKIP|NOT_APPLICABLE|SKIPPED_WITH_REASON"
-    r"|NEEDS_HUMAN_REVIEW|WARN) ?\| ?(.*)$")
+    r"|NEEDS_HUMAN_REVIEW|WARN)(?: ?\[[a-z]+\])? ?\| ?(.*)$")
 
 
 def parse_format_report(path, domain):
@@ -105,22 +105,28 @@ def parse_format_report(path, domain):
     nas = [c for c, st, e in items if st == "NOT_APPLICABLE"]
     nhrs = [c for c, st, e in items if st == "NEEDS_HUMAN_REVIEW"]
     warns = [c for c, st, e in items if st == "WARN"]
-    # 域终局（与全局聚合规则同序：ERROR>Critical/High FAIL(BLOCK)>NHR>WARN>PASS）：
-    # 存在未裁决 NHR / WARN 项时不得记 PASS（v1.6.5：figure_visual 会产出这两态，
-    # 旧实现把它们当不匹配行静默丢弃→假 PASS 泄漏）。
+    skips = [c for c, st, e in items if st == "SKIPPED_WITH_REASON"]
+    # 域终局（与全局聚合规则同序：ERROR>Critical/High FAIL(BLOCK)>NHR>WARN>SKIP>PASS）：
+    # ① NHR/WARN 不得记 PASS（v1.6.5：figure_visual 会产出这两态，旧实现把它们当不匹配行
+    #    静默丢弃→假 PASS 泄漏）；
+    # ② SKIPPED_WITH_REASON 是"未执行/条件不满足"，既非 PASS 也非 N/A：只有全 SKIP 才可
+    #    归 N/A（此时域内确实无任何可判定项），**混合报告中存在 SKIP 即不得记 PASS**
+    #    （否则 GQ-15 这类刻意改成 skip 的人工项会被洗成通过）。
     if fails:
         status = "FAIL"
-    elif len(nas) == len(items):
+    elif len(nas) + len(skips) == len(items):
         status = "NOT_APPLICABLE"
     elif nhrs:
         status = "PASS_WITH_HUMAN_REVIEW"
     elif warns:
         status = "PASS_WITH_WARNINGS"
+    elif skips:
+        status = "SKIPPED_WITH_REASON"
     else:
         status = "PASS"
     return {"domain": domain, "status": status,
             "failures": [{"code": c, "evidence": e[:140]} for c, e in fails],
-            "needs_human_review": nhrs, "warnings": warns,
+            "needs_human_review": nhrs, "warnings": warns, "skips": skips,
             "not_applicable": nas, "evidence": [path], "checks": len(items)}
 
 
@@ -191,6 +197,12 @@ def aggregate(root, write=False):
     contract = TB.load_contract(root)[0]
     qa_rel = ((contract or {}).get("qa") or {}).get("out") or "artifacts/qa"
     qad = os.path.join(root, ".aeromech", *qa_rel.split("/"))
+    # A3 判据：交付物是否已产出（构建是否发生过）。报告缺失时用于区分
+    # "构建过但漏跑 QA"（=证据缺失→FAIL）与"尚未构建"（=未评估→N/A 不阻断）。
+    _cdocx = ((contract or {}).get("output") or {}).get("docx") or TB.DEFAULT_DOCX
+    _cpdf = ((contract or {}).get("output") or {}).get("pdf") or TB.DEFAULT_PDF
+    built = (os.path.isfile(os.path.join(root, _cdocx))
+             or os.path.isfile(os.path.join(root, _cpdf)))
     for fname, domain, step in FORMAT_REPORTS:
         rel_disp = f".aeromech/{qa_rel}/{fname}"
         rep = parse_format_report(os.path.join(qad, fname), domain)
@@ -201,6 +213,25 @@ def aggregate(root, write=False):
             if s_st == "PASS":
                 add(f"G-FMT-{domain}", domain, "FAIL", "high", [fname],
                     f"pipeline 记 {step} PASS 但报告缺失（未执行≠通过）", REMEDIATION["missing"])
+            elif s_st == "NOT_APPLICABLE":
+                add(f"G-FMT-{domain}", domain, "NOT_APPLICABLE", "none", [fname],
+                    f"pipeline 记 {step} NOT_APPLICABLE，报告缺失与之一致（条件不适用）", "")
+            elif s_st in ("FAIL", "ERROR"):
+                add(f"G-FMT-{domain}", domain, "ERROR", "critical", [fname],
+                    f"pipeline 记 {step} {s_st} 且报告缺失（失败无报告可核）",
+                    REMEDIATION["error"])
+            elif built:
+                # A3（fail-closed）：交付物已产生（构建发生过）却缺该域报告 = 证据缺失，
+                # 记 FAIL。旧实现直接 continue → 域从 items 中**凭空消失**，若其余域恰好
+                # PASS 则终局可 PASS（假 PASS 泄漏，与"缺决定性证据=BLOCK"纪律冲突）。
+                add(f"G-FMT-{domain}", domain, "FAIL", "high", [fname],
+                    f"报告缺失（域={domain}；交付物已产出但该 QA 无报告，未执行≠通过）",
+                    REMEDIATION["missing"])
+            else:
+                # 尚未构建（无交付物）：无报告与"未开始"一致，记 N/A 不阻断，
+                # 但不构成放行证据（aggregate 视 N/A 为非决定性）。
+                add(f"G-FMT-{domain}", domain, "NOT_APPLICABLE", "none", [fname],
+                    f"报告缺失且交付物尚未产出（域={domain}；未评估≠通过）", "")
             continue
         if rep["status"] == "FAIL":
             add(f"G-FMT-{domain}", domain, "FAIL", "high", rep["evidence"],
@@ -220,6 +251,12 @@ def aggregate(root, write=False):
             add(f"G-FMT-{domain}", domain, "WARN", "medium", rep["evidence"],
                 f"{len(rep.get('warnings', []))}/{rep['checks']} 项 WARN: "
                 + ", ".join(rep.get("warnings", [])[:6]), "")
+        elif rep["status"] == "SKIPPED_WITH_REASON":
+            # B3（fail-closed）：混合报告里的 SKIP 项 = 未执行/未判定，不得洗成 PASS。
+            # 记 NEEDS_HUMAN_REVIEW 交人工确认这些项是否真的不适用。
+            add(f"G-FMT-{domain}", domain, "NEEDS_HUMAN_REVIEW", "high", rep["evidence"],
+                f"{len(rep.get('skips', []))}/{rep['checks']} 项 SKIP（未执行≠通过）: "
+                + ", ".join(rep.get("skips", [])[:6]), REMEDIATION["missing"])
         else:
             add(f"G-FMT-{domain}", domain, "PASS", "none", rep["evidence"],
                 f"{rep['checks']} 项通过"

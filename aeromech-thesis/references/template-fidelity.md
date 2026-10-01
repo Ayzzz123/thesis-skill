@@ -87,7 +87,7 @@ TF-20 不允许只做 XML 属性检查：必须渲染原始模板与最终 DOCX/
 （封面/声明/摘要/ABSTRACT/目录/正文章首/图表页/参考文献/附录/致谢），记录位置、层级、
 字体、空白、页眉、页脚、页码与结构对应情况。
 
-封面专项 QA 见 Cover Fidelity（v1.2.0）：`scripts/cover_fidelity.py` CF-01~20
+封面专项 QA 见 Cover Fidelity（v1.2.0）：`scripts/cover_fidelity.py` CF-01~25
 （模板↔成品双 PDF 首页图像位置/尺寸/文本行/像素覆盖对照，OBS-007 防回归）。
 
 ## 9. 冲突优先级与记录

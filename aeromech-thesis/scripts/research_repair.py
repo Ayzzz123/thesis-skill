@@ -323,7 +323,14 @@ def _execute_fix_label(root, rep):
 
 
 def _verify_downgrade(root, rep):
-    """复检：降级后文本不得再命中强断言/身份越界模式。"""
+    """复检：降级后文本不得再命中强断言/身份越界模式；且**正文必须真的被改到**。
+
+    A4a（2026-10-01）：旧实现只回读注册表字段（claims/conclusions 的 claim/conclusion
+    常是正文的概要或截断），因此"仅改注册表、正文原样"也会复检通过 → REP 记 verified，
+    而论文里的"实测/证明/显著"原封不动。现在：
+      · CL-/CON- 目标：要求 execute 阶段确有 text_changes（正文被替换），否则判失败；
+      · 无论注册表复检是否通过，都**回扫章节正文**确认真实交付内容已不含越界表述。
+    """
     payload = rep.get("payload") or {}
     target = str(payload.get("claim_id") or "")
     if target.startswith("CL-"):
@@ -344,7 +351,32 @@ def _verify_downgrade(root, rep):
     hits = RQ._claim_hits(text, RQ.STRONG_PATTERNS_CRIT + RQ.STRONG_PATTERNS_HIGH)
     id_hits = RQ._claim_hits(text, RQ.REAL_CLAIM)
     ok = not hits and not id_hits
-    return ok, f"复检：强断言命中={hits or '无'}；身份越界={id_hits or '无'}"
+    if not ok:
+        return False, f"复检：强断言命中={hits or '无'}；身份越界={id_hits or '无'}"
+
+    # A4a：注册表字段复检通过还不够——必须确认修复作用于实际交付内容（章节 md）。
+    if target.startswith(("CL-", "CON-")):
+        changes = ((rep.get("after") or {}).get("changes") or {})
+        touched = [c for c in (changes.get("text_changes") or [])]
+        if not touched:
+            return False, (f"复检失败：{target} 仅改注册表、正文未发生对应替换"
+                           f"（text_changes 为空）——不得记 verified")
+        # 回扫正文：这些文件里不得再出现原注册表条目的越界表述
+        before_text = str((rep.get("before") or {}).get("text") or "")
+        still = []
+        for rel in touched:
+            fp = os.path.join(root, rel)
+            if not os.path.isfile(fp):
+                continue
+            body = open(fp, encoding="utf-8").read()
+            if body and RQ._claim_hits(body, RQ.STRONG_PATTERNS_CRIT
+                                      + RQ.STRONG_PATTERNS_HIGH):
+                still.append(rel)
+        if still:
+            return False, f"复检失败：正文仍含强断言：{still}"
+        return True, (f"复检：注册表与正文均已降级（改动 {len(touched)} 个正文文件）；"
+                      f"强断言命中={hits or '无'}；身份越界={id_hits or '无'}")
+    return True, f"复检：强断言命中={hits or '无'}；身份越界={id_hits or '无'}"
 
 
 def _verify_number_sync(root, rep):
@@ -449,10 +481,25 @@ def apply_human(root, queue_path=None, create_reps=True):
             rt = str(e.get("repair_type") or "")
             opt = str(e.get("option") or "")
             # 通道1：注册表字段更新（通用）：payload={registry, id, values:{field:value,…}}
+            # A4b（2026-10-01）：**身份字段禁改**——allow/modify 不得成为"把模拟数据/证据
+            # 洗成真实"的通道。命中受保护字段时拒绝写入，置 needs_input 交人工走正规路径
+            # （改正文/补材料 → 重新诊断），绝不静默改写身份。
             reg = str(payload.get("registry") or "")
             reg_id = str(payload.get("id") or "")
             reg_values = payload.get("values") or {}
             files = []
+            if reg and reg_id and reg_values:
+                blocked = sorted(k for k in reg_values if RI.is_identity_field(reg, k))
+                if blocked:
+                    e["applied_status"] = "needs_input"
+                    e["blocked_identity_fields"] = blocked
+                    results.setdefault("blocked_identity", []).append(
+                        f"{did}（{reg}.yaml/{reg_id}: {', '.join(blocked)}）")
+                    results["needs_input"].append(
+                        did + f"（身份字段禁改: {', '.join(blocked)}；"
+                              f"请改为修正正文/补充材料后重新诊断）")
+                    changed = True
+                    continue
             if reg and reg_id and reg_values and reg in RI.REGISTRY_SPECS:
                 items = RI.load_registry(root, reg) or []
                 hit = None

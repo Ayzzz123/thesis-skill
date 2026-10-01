@@ -83,8 +83,10 @@ description: 航空机械与飞行器维修工程方向的毕业论文/毕业设
 | 交付收尾（元数据中性化） | `scripts/finalize_metadata.py`（清 DOCX/PDF 属性中的工具痕迹与系统用户名；置于 export_pdf 之后、最终 QA 之前） |
 | 封面保真交付（Cover Fidelity） | `references/cover-fidelity.md`（规则）+ `scripts/cover_fidelity.py`（CF-01~25 + restore_cover_tblpr） |
 | 页级保真交付（Page Fidelity） | `scripts/page_fidelity_qa.py`（HF-01~04 页眉 / AF-01~04 摘要页 / AT-01~05 附录表 / RF-01~04 参考文献，v1.3.1） |
-| 图表版式交付（Figure/Table Fidelity） | `scripts/figure_table_qa.py`（FIG-01~12 图片 / TAB-01~10 表格）与 `scripts/content_purity_qa.py`（MD/INT/PRM/APX，v1.3.2） |
-| 图形拓扑质量（Graph Quality） | `scripts/graph_quality_qa.py`（GQ-01~15）+ `scripts/figkit.py`（绘制+layout 几何元数据，v1.3.3） |
+| 图表版式交付（Figure/Table Fidelity） | `scripts/figure_table_qa.py`（FIG-01~13 图片 / TAB-01~10 表格）与 `scripts/content_purity_qa.py`（MD/INT/PRM/APX，v1.3.2） |
+| 图形拓扑质量（Graph Quality） | `scripts/graph_quality_qa.py`（GQ-01~20，含 GQ-00 元数据、GQ-01b 文本溢出）+ `scripts/figkit.py`（绘制+layout 几何元数据，v1.3.3） |
+| 图形视觉质量（Figure Visual QA，v1.6.5） | `scripts/figure_visual_qa.py`（VIS-01~12）+ `scripts/figure_style.py`（学术视觉单一来源）+ `docs/v1.6.5/02~05` 设计文档 |
+| 外部生图（Image Provider，v1.6.5） | `references/image-provider.md`（规则）+ `scripts/image_config.py` / `image_provider.py` / `image_backends.py` / `ai_figure_gate.py` / `image_cli.py` / `secret_leak_qa.py` |
 | 编排层（v1.6.0：状态/断点/调度/恢复/统一构建/门禁聚合） | `references/orchestration.md`（规则总纲）+ `scripts/thesis_state.py` / `material_ingestion.py` / `school_requirements.py` / `research_context.py` / `stage_routing.py` / `thesis_orchestrator.py` / `figure_iface.py` / `thesis_build.py` / `delivery_gate.py` |
 
 ## 4. Master 路由规则
@@ -152,7 +154,7 @@ S9→S3/S4/S5/S6/S7（问题归类回退）   S9→S10
 **门禁三态**（校验算法见 `state.md` §5）：
 
 - `passed`：证据齐备且满足研究方案第 13 节的「证据完成判据」。
-- `conditional`：证据生产模块本版未实现（S5/S6 降级），仅有降级产物时使用。四个条件缺一不可：① 降级产物已落盘（如分析表表头骨架——骨架只是 conditional 的**必要产物**，永不构成 passed 证据，见 `state.md` §5 第 3 步）；② 资料缺口清单已列出；③ 已挂 open_issue（severity=高，target_stage=S5/S6）；④ 章稿只写框架性内容，依赖该证据的结论标【待补依据】，不得写成结果。conditional **不记 override**。
+- `conditional`：**证据存在实质缺口且用户知情**（如仅有分析表骨架、仅有模拟数据、文献未回填）时使用。四个条件缺一不可：① 降级产物已落盘（如分析表表头骨架——骨架只是 conditional 的**必要产物**，永不构成 passed 证据，见 `state.md` §5 第 3 步）；② 资料缺口清单已列出；③ 已挂 open_issue（severity=高，target_stage=S5/S6）；④ 章稿只写框架性内容，依赖该证据的结论标【待补依据】，不得写成结果。conditional **不记 override**。
 - `failed`：既无证据也无降级路径 → 不写，回退补依据。
 
 ## 7. 恢复协议（“继续论文”）
@@ -165,27 +167,30 @@ S9→S3/S4/S5/S6/S7（问题归类回退）   S9→S10
 6. 若存在 open_issues → 先处理回退，再前进。
 7. **v1.6 起**：上述协议有程序化执行体——`python scripts/thesis_state.py <root> resume`（恢复视图：阶段/游标/产物 sha256 完好性/下一步）与 `python scripts/thesis_orchestrator.py <root> resume`（先做 drift 检查：STATE_DRIFT/REGISTRY_DRIFT/ARTIFACT_MISSING/ARTIFACT_CHANGED，发现差异交人工/ERROR，**禁止从 S1 重启、禁止静默覆盖**）。
 
-## 8. 未实现模块的降级响应
+## 8. 能力不足时的降级响应（非"未实现"）
 
-触发 Engineering / Data / Figure / Citation Integrity / QA / Defense 时，**不得静默失败，也不得假装完成**：
+**§2 列出的模块均已实现，可直接调用。** 本节的降级只针对两类真实情形：
+① 用户材料/数据确实缺失（如无真实故障数据、无受控手册）；② 证据强度不足
+（仅有骨架、仅有模拟数据）。此时**不得静默失败，也不得假装完成**：
 
 ```
-该能力属于 <模块名>（<阶段>），当前 MVP 版本未实现，预计在 <下表 Phase 归属> 落地。
-现在可以做的降级处理：<具体可行替代>
+当前缺少：<缺什么>（属于 <阶段> 的依据）
+因此本次只能给出：<可交付的最小产物>
+补齐方式：<用户需提供什么 / 需完成哪一步>
 ```
 
-**模块 → Phase 归属**：Engineering（S5）、Data（S6）→ Phase 3；Figure（S8）、Citation Integrity → Phase 4；QA（S9）、Defense（S10）→ Phase 5。
+降级对照（与 `references/integrity.md` 一致）：
 
-降级对照：
-
-| 模块 | 降级处理 |
+| 缺什么 | 降级处理 |
 |---|---|
-| Engineering | 给出方法选型建议与分析表**表头骨架**（FMEA 九列：部件/功能、故障模式、故障原因、局部影响、上层影响、最终影响、S、O、D；RPN=S×O×D 作为第十列或表后计算），标明「需人工完成分析」；不代算、不编造结果 |
-| Data | 按 `references/integrity.md` 登记数据卡片字段并标注来源与可信度；不做统计推断 |
-| Figure | 在章稿中输出「图表点位表」（位置/类型/内容/编号/正文引用点）；不生成图 |
-| Citation Integrity | 执行最小引用纪律：观点是否需要来源 → 有无来源 → 标【待核实】；不做全文引用链审计。降级期间仍须按 `state.md` §7/§8 登记 open_issue 并回退 S4 |
-| QA | 提供人工自查清单（结构/学术/工程/数据/图表/写作六类）；不出具正式检查报告 |
-| Defense | 给出答辩准备要点提纲；不生成 PPT 与答辩稿 |
+| 真实故障/试验数据 | 可用公开数据集二次分析或模拟数据演示**方法**，但须逐处标【假设/模拟·仅演示方法】，且不得作为实证结论（RQG-06/09/10 拦截） |
+| 受控技术手册/标准原文 | 标【待核实】并注明需用户回填出处；不代填编号、不编造条目 |
+| 文献全文 | 题录级来源只支持"已有资料报道"级表述，不支撑具体数值结论；建 open_issue 追踪 |
+| 实验室/高价软件条件 | 给出收缩方案或替代课题（§1 第 3 条），不硬做 |
+| 学校正式模板 | 走 FORMAT_RECONSTRUCTION 通用默认格式；学校特定字段标【学校格式待提供】，不阻塞流程（§17） |
+
+**判据**：降级产物必须落盘并登记 open_issue；依赖缺失依据的结论标【待补依据】，
+不得写成结果。这与 S7 门禁的 `conditional` 三态联动（见 §6 与 `state.md` §5）。
 
 ## 9. 交互规则
 
@@ -254,8 +259,8 @@ thesis-project/                    # 项目根目录
 | `.aeromech/` 不存在但用户说“继续” | 询问工程目录；确认后初始化新项目 |
 | state.yaml 损坏/字段缺失 | 备份原文件 → 按 schema 补默认值 → 告知用户已修复的字段 |
 | schema_version 高于当前 Skill | 只读运行，提示需升级 Skill，不写入 |
-| 用户要求跳过前置阶段 | 说明缺失的门禁证据 → 用户确认 → 记 override + open_issue。用户在初始指令中已明确要求跨阶段推进（如一次要求“方案+目录+正文”）即视为确认，仍须记 override 与 open_issue。**豁免**：若缺证据的原因是 S5/S6 模块本版未实现，走门禁 `conditional`（§6），不记 override |
-| 证据生产模块未实现（S5/S6 降级） | 按门禁 `conditional` 处理（§6）：落盘降级产物 + 缺口清单 + open_issue，章稿限写框架内容；不记 override、不代算 |
+| 用户要求跳过前置阶段 | 说明缺失的门禁证据 → 用户确认 → 记 override + open_issue。用户在初始指令中已明确要求跨阶段推进（如一次要求“方案+目录+正文”）即视为确认，仍须记 override 与 open_issue。**豁免**：若缺证据的原因是用户材料/数据确实缺失（§8 降级情形），走门禁 `conditional`（§6），不记 override |
+| 证据存在实质缺口（§8 降级） | 按门禁 `conditional` 处理（§6）：落盘降级产物 + 缺口清单 + open_issue，章稿限写框架内容；不记 override、不代算 |
 | 用户要求编造数据/文献 | 拒绝 + 解释 + 给合法替代方案（见 integrity.md） |
 | 用户以截止时间/导师要求施压编造 | 维持拒绝，不重复说教 → 交付不含虚构内容的最小可交付物（论文框架 / 检索清单 / 空登记表）→ 建议向导师书面说明补交安排；记 open_issue |
 | 用户报告的引用或数据问题 | 先在产物中核查再行动，如实记录核查结果；即使未命中也不忽略，建 open_issue 追踪并在章稿补引用口径说明 |
@@ -286,14 +291,29 @@ thesis-project/                    # 项目根目录
 
 ## 15. 交付流水线（Delivery Pipeline，v1.0.0 stabilization）
 
-完整规则见 `references/delivery-pipeline.md`（已在真实论文 39 页 PDF 上验证）。流程：
+完整规则见 `references/delivery-pipeline.md`（已在真实论文 39 页 PDF 上验证）。
+
+**pipeline 顺序的唯一事实来源是 `scripts/thesis_build.py` 的 `ALL_STEPS`**：
 
 ```
-S1–S7 → S8 图表生成 → S9 QA → DOCX Assembly
-→ PAGE_FLOW_OPTIMIZER → Visual Regression → TOC Update → PDF Export
-→ PDF Structural QA → PDF Visual QA → Delivery Gate
-→ 毕业论文.docx + 毕业论文.pdf
+docx → toc → repaginate → pdf → finalize → qa
 ```
+
+其中各步的展开（新论文经 `build-contract.yaml` + `thesis_build` 统一驱动）：
+
+| 步 | 内容 |
+|---|---|
+| `docx` | 契约校验 → 双模式组装（TEMPLATE_FIDELITY / FORMAT_RECONSTRUCTION）→ `build_docx` → 记 EMBEDDED |
+| `toc` | `update_toc.py`：Word COM 两轮 TOC Update + Repaginate |
+| `repaginate` | `cover_fidelity.py --restore`（恢复 COM 剥离的 tblPr）→ `repaginate_tables.py`（TABLE_START_BLOCK 硬校验） |
+| `pdf` | `export_pdf.py`：DOCX → PDF（PDF 为最终真值） |
+| `finalize` | `finalize_metadata.py`：清 DOCX/PDF 元数据痕迹 |
+| `qa` | 13 个 QA 检查器（pdf_qa / visual_regression / tf_qa / cover_fidelity / content_purity / cover_align / cover_fill / color_fidelity / page_fidelity / table_readability / figure_table / graph_quality / figure_visual）→ `write_manifest` |
+
+随后 `delivery_gate.py` 聚合全部证据域 → 五态终局 → `毕业论文.docx` + `毕业论文.pdf`。
+
+> 旧项目（无 build-contract）仍走各自 builder 与手工链（顺序见 §18.3），
+> 其文档域在 Gate 中记 NOT_APPLICABLE，不误判。
 
 S10 答辩独立，不受交付层影响。核心原则：
 
@@ -313,7 +333,7 @@ S10 答辩独立，不受交付层影响。核心原则：
 - **v1.5 起**：若项目已建立 Research Intelligence 注册表（design.yaml/scope.yaml），Delivery Gate 还必须通过 `scripts/research_agent_loop.py`——终态 BLOCK（存在未解决 Critical/High，含 FEASIBILITY_BLOCK）禁止交付；PASS_WITH_HUMAN_REVIEW 须完成人工裁决（`.aeromech/research/human-review-queue.yaml`：approve/modify/reject，不静默）后方可交付；PASS_WITH_WARNINGS / WARN 记录披露。`scripts/research_quality_score.py` 8 维评分随交付报告输出，**总分不构成交付依据**（blocked 时仅为展示值）。旧项目（无 design/scope）记 not_initialized，不阻塞（兼容规则同 v1.4）。
 - **v1.6.0 已发布**：交付域程序化统一——`scripts/thesis_build.py`（build-contract.yaml → 双模式组装 → 固定顺序 pipeline：docx→toc→repaginate→pdf→finalize→qa → artifact-manifest.yaml；任一失败输出 {failed_stage, error_code, reason, suggested_action} 且下游留痕，不得假装成功）与 `scripts/delivery_gate.py`（聚合格式链 QA 报告 + pipeline 步骤 + Document/manifest 一致性 + Figure 生命周期 + 研究侧 RQG/loop + 人工双队列 → 五态终局 PASS/PASS_WITH_WARNINGS/PASS_WITH_HUMAN_REVIEW/BLOCK/ERROR，每项带 evidence/reason/remediation；缺决定性证据=BLOCK，ERROR 绝不透 PASS，总分不参与放行；旧项目无契约→文档域 NOT_APPLICABLE 不误伤）。规则 `references/orchestration.md` §11-§13。
 - 研究证据层限制（无真实故障数据、无受控手册、文献全文未获取、机型未绑定等）不得因排版成功被覆盖，仍按 Integrity 机制披露。
-- 脚本清单：`render_mermaid.py`（图渲染+Chrome 自动探测）、`docx_engine.py`（排版原语）、`build_docx.py`（内容层组装器模板，用法 `python build_docx.py <project_root>`）、`update_toc.py`、`export_pdf.py`、`pdf_qa.py`、`visual_regression.py`、`cover_fidelity.py`（CF-01~20 + tblPr 恢复）。所有脚本带命令行入口与退出码。交付链末尾建议执行 `finalize_metadata.py <project_root>`（清 DOCX/PDF 元数据痕迹，须在最后一次 Word 保存之后运行）。
+- 脚本清单：`render_mermaid.py`（图渲染+Chrome 自动探测）、`docx_engine.py`（排版原语）、`build_docx.py`（内容层组装器模板，用法 `python build_docx.py <project_root>`）、`update_toc.py`、`export_pdf.py`、`pdf_qa.py`、`visual_regression.py`、`cover_fidelity.py`（CF-01~25 + tblPr 恢复）。所有脚本带命令行入口与退出码。交付链末尾建议执行 `finalize_metadata.py <project_root>`（清 DOCX/PDF 元数据痕迹，须在最后一次 Word 保存之后运行）。
 
 ## 17. Template Fidelity / Template-Driven Delivery（v1.1.0）
 
@@ -353,6 +373,8 @@ S10 答辩独立，不受交付层影响。核心原则：
 3. **Word COM 规范化防护**：update_toc 保存会移除封面表格 tblPr 的 tblStyle/tblCellMar；
    交付顺序 = build → update_toc → `cover_fidelity.py --restore`（重新注入）→
    `repaginate_tables.py`（TABLE_START_BLOCK 硬校验/强制分页）→ export_pdf → QA。
+   （与 §15 的 `thesis_build.ALL_STEPS` 一致：docx→toc→repaginate→pdf→finalize→qa，
+   以代码为唯一事实来源。）
 4. **交付 QA 链**：pdf_qa.py + visual_regression.py + tf_qa.py（TF-01~20）+
    `cover_fidelity.py`（CF-01~25，模板↔成品双 PDF 首页视觉对照 + 对象树/横线一致性）；CF 任一 FAIL 禁止交付。
    v1.3.0 新增：COVER_IMMUTABLE_REGION（封面仅允许 replace placeholder text；禁止 rebuild/recreate/
@@ -374,7 +396,7 @@ pBdr，交付构建必须克隆模板页眉段落而非新建）；AF-01~04 摘�
 
 ### 18.2 图表版式与内容净化（v1.3.2）
 
-`scripts/figure_table_qa.py`（FIG-01~12 / TAB-01~10）：图片显示尺寸与版心一致（引擎 BODY_WIDTH
+`scripts/figure_table_qa.py`（FIG-01~13 / TAB-01~10）：图片显示尺寸与版心一致（引擎 BODY_WIDTH
 须与模板边距匹配，17cm 版心下图片显示宽 ≈14.4cm、缩放 ≥70%）、图内有效字号 ≥7pt 自检、
 图题在下/表题在上、三线表、列宽极值比、无 Markdown 残留、图表被正文引用；
 `scripts/content_purity_qa.py`（MD/INT/PRM/APX/TABCAP）：PDF 无 `**`/`|`/`##`/`---` 残留、
@@ -391,7 +413,7 @@ H1 分页规则=仅正文首个 H1 不分页、其余（含附录双 H1）一律
 分层框图、树状+折线绕行），不得仅靠放大字号或整体缩放。
 
 `scripts/figkit.py`：绘制即输出 layout JSON（框/边多段折线/文本 bbox 的几何元数据，bbox 经 renderer 实测），
-供几何检查真实检测"拓扑拥挤"。`scripts/graph_quality_qa.py`（GQ-01~15）：
+供几何检查真实检测"拓扑拥挤"。`scripts/graph_quality_qa.py`（GQ-01~20）：
 节点/条形不重叠、文本不溢出框（0.03 容差）、边无穿字、边不穿节点（多段线采样）、
 同层最小框距 ≥0.2cm、主流程方向一致、图例不覆盖、数据标签不重叠、有效字号 ≥9pt、
 无裁剪、图题同页、图题-图/图-正文间距、独立页占用率 ≥55%、人工视觉对照（before|after 输出）。

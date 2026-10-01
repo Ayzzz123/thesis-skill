@@ -544,6 +544,10 @@ def check_manifest(root):
 def _step(root, name, cmd, timeout=600, allow_na=False):
     """运行既有脚本子进程。返回步记录 {step, rc, status, output_tail}。"""
     rec = {"step": name, "ts": _now()}
+    # out 必须预置：rc==3 既可能来自下面的异常分支，也可能来自子进程的**正常返回码**
+    # （pdf_qa 缺依赖/tf_qa 配置错误都合法返回 3）。旧实现只在 except 里赋值 → 命中
+    # 正常 rc==3 时 tail 行抛 NameError，整条 pipeline 崩溃且不落 manifest。
+    out = ""
     try:
         p = subprocess.run(cmd, capture_output=True, text=True,
                            encoding="utf-8", errors="replace", timeout=timeout,
@@ -553,7 +557,10 @@ def _step(root, name, cmd, timeout=600, allow_na=False):
         rc, out = 3, f"脚本缺失: {e}"
     except subprocess.TimeoutExpired:
         rc, out = 3, f"超时 {timeout}s"
-    tail = ((p.stdout or "") + "\n" + (p.stderr or "")).strip().splitlines()[-3:] if rc != 3 else [out]
+    if out:
+        tail = [out]
+    else:
+        tail = ((p.stdout or "") + "\n" + (p.stderr or "")).strip().splitlines()[-3:] or [""]
     if rc == 0:
         st = "PASS"
     elif allow_na and rc == 2:

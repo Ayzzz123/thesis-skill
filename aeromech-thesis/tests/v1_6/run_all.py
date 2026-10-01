@@ -7,6 +7,8 @@ test_school_context。Phase 2 模块：test_research_context / test_stage_routin
 Phase 3 模块：test_orchestrator / test_resume / test_failure_recovery /
 test_agent_loop_integration。Phase 4 模块：test_figure_iface / test_thesis_build /
 test_delivery_gate。Phase 5 模块：test_document_contract（文档=代码一致性锁）。
+2026-10-01 修复回归锁：test_gate_failclosed（A1 报告格式契约 / A2 _step rc=3 /
+A3 报告缺失兜底 / B3 SKIP 不得判 PASS）。
 后续 Phase 的测试文件加入 TESTS 即可。
 """
 import os
@@ -29,6 +31,9 @@ TESTS = [
     "test_figure_iface.py",
     "test_thesis_build.py",
     "test_delivery_gate.py",
+    "test_gate_failclosed.py",
+    "test_lifecycle_embedded.py",
+    "test_pipeline_contract.py",
     "test_document_contract.py",
     "test_omml_word_compat.py",
 ]

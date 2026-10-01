@@ -100,4 +100,4 @@
 - **Research**：方案的「数据/资料来源」必须是真实可得渠道，不得写“拟从某航空公司获取”而无获取路径。
 - **Writing**：每章交稿前执行 §4 自查，章末附待核实清单。
 - **State**：诚信类问题记为 `open_issue`，severity=严重，target_stage 按问题类别映射（见 `state.md` §8）。
-- **Citation Integrity（Phase 4 落地）**：将接管「观点→是否需要引用→是否有来源→来源是否支持→编号→格式」全链审计；在此之前，本文件 §5 的最小引用纪律生效。
+- **Citation Integrity（已实现）**：`references/agents/citation.md` 负责「观点→是否需要引用→是否有来源→来源是否支持→编号→格式」全链审计，交付侧由 `page_fidelity_qa.py` RF-01~04（参考文献编号连续、文内引用一一对应）与 `figure_table_qa.py` FIG-12/13（图表被引用/引用可解析）核验。本文件 §5 的最小引用纪律是其前置基线，仍然有效。

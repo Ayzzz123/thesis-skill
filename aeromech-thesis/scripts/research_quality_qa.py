@@ -332,7 +332,37 @@ def _run_impl(root, out_dir=None, pdf=None, verbose=True):
     rep.add("RQG-08", "核心结论可以追溯到分析", status8, "High",
             f"结论 {len(cons)} 条链路齐备" if status8 == "PASS" else f"断链: {bad8 or '未注册结论'}")
 
-    simulated_only = bool(datasets) and all(d.get("type") in ("simulated", "assumption") for d in datasets)
+    # A4c（2026-10-01）：**逐条身份判定**取代全局开关。
+    # 旧实现 `simulated_only = all(type in (simulated, assumption))` —— 只要加一个
+    # type=public 的数据集即可整体关闭 RQG-09b/RQG-10 的全部 Critical 语义检查。
+    # 现在同时维护：
+    #   simulated_ids —— 明确为模拟/假设的数据集与证据（用于逐条比对"谁被写成了实测"）
+    #   unknown_ids   —— 身份无法判定的数据（缺 type/label，或非 simulated 却无来源）
+    # 二者非空即触发检查；不再依赖"全部都是模拟"这一前提。
+    def _ds_identity(d):
+        t = str(d.get("type") or "").strip()
+        if t in ("simulated", "assumption"):
+            return "simulated"
+        if t in ("real", "public", "user_provided", "literature"):
+            return "real"
+        return "unknown"
+
+    simulated_ids, unknown_ids, real_ids = [], [], []
+    for d in datasets:
+        k = _ds_identity(d)
+        did = str(d.get("id"))
+        if k == "simulated":
+            simulated_ids.append(did)
+        elif k == "unknown":
+            unknown_ids.append(did)
+        else:
+            real_ids.append(did)
+    # 证据侧：simulation/assumption 类型的证据同样计入"模拟身份"集合
+    for e in (RI.load_registry(root, "evidence") or []):
+        if str(e.get("source_type")) in ("simulation", "assumption"):
+            simulated_ids.append(str(e.get("id")))
+    has_simulated = bool(simulated_ids)
+    has_unknown = bool(unknown_ids)
 
     # ---- RQG-09 摘要结论与正文结论一致 ----
     front = texts["front"] or all_text[:2000]
@@ -346,12 +376,20 @@ def _run_impl(root, out_dir=None, pdf=None, verbose=True):
         issues9.append(f"摘要含正文未出现的数值: {extra[:6]}")
         hard9 = True
     # b) 摘要真实声称 × 数据身份（模拟数据不得写成真实实验）
-    if simulated_only:
+    # A4c：只要**存在**模拟数据即检查（不再要求"全部都是模拟"）；身份不明同样检查。
+    if has_simulated or has_unknown:
         real_hits = _claim_hits(front, REAL_CLAIM)
         if real_hits:
-            issues9.append(f"摘要出现{real_hits}但全部数据为模拟（禁止把模拟写成真实）")
-            sev9 = "Critical"
-            hard9 = True
+            if has_simulated:
+                issues9.append(f"摘要出现{real_hits}但存在模拟数据 {simulated_ids[:4]}"
+                               f"（禁止把模拟写成真实）")
+                sev9 = "Critical"
+                hard9 = True
+            else:
+                issues9.append(f"摘要出现{real_hits}但数据身份未登记 "
+                               f"{unknown_ids[:4]}（无法确认来源，不得按实测表述）")
+                sev9 = "Critical"
+                hard9 = True
     # c) 结论关键词在摘要中的覆盖（软检查）
     if cons:
         cover_ok = 0
@@ -364,7 +402,7 @@ def _run_impl(root, out_dir=None, pdf=None, verbose=True):
             if sev9 != "Critical" and not hard9:
                 sev9 = "Medium"
     status9 = "FAIL" if hard9 else ("WARN" if issues9 else "PASS")
-    if status9 == "PASS" and simulated_only:
+    if status9 == "PASS" and (has_simulated or has_unknown):
         # v1.4.1：Critical 级语义检查（模拟身份是否被误写为真实）为启发式，无命中不得自动 PASS
         status9 = ST_NHR
         review_items.append({
@@ -372,6 +410,8 @@ def _run_impl(root, out_dir=None, pdf=None, verbose=True):
             "claim": "（摘要↔正文一致性）",
             "claim_text": "摘要对模拟数据身份与结论的表述",
             "evidence": [f"{d.get('id')}({d.get('type')})" for d in datasets],
+            "identity_breakdown": {"simulated": simulated_ids, "real": real_ids,
+                                   "unknown": unknown_ids},
             "reason": "启发式（数值域/关键词覆盖/否定语境）未发现把模拟写成真实的模式命中；"
                       "但摘要与正文、结论的语义一致性无法由模式可靠判定",
             "uncertainty": "改写式表述（如“来自维修记录整理”）、隐含因果、强度放大可能绕过模式检测",
@@ -426,11 +466,12 @@ def _run_impl(root, out_dir=None, pdf=None, verbose=True):
         elif weak:
             weak_targets.append(("conclusion", str(c.get("id")), text, sts,
                                  c.get("evidence") or [], c.get("analyses") or []))
-    # 文本级：模拟数据场景下不得使用"实验口径"措辞
-    if simulated_only:
+    # 文本级：存在模拟数据即不得使用"实验口径"措辞（A4c：不再要求全部为模拟）
+    if has_simulated or has_unknown:
         synth_hits = _claim_hits(all_text, SYNTH_STRONG)
         if synth_hits:
-            bad10.append(f"正文出现{synth_hits}但数据为模拟")
+            bad10.append(f"正文出现{synth_hits}但存在模拟/身份未定数据"
+                         f"（模拟 {simulated_ids[:3]}；未定 {unknown_ids[:3]}）")
             sev10 = "Critical"
 
     # 文本级（v1.6 test-8.0 补，P3 类缺口）：模拟口径场景下正文句子的强断言词。
@@ -456,7 +497,7 @@ def _run_impl(root, out_dir=None, pdf=None, verbose=True):
         return hits
 
     body_hits = []
-    if simulated_only and (texts["chapters"].strip() or texts["conclusion"].strip()):
+    if (has_simulated or has_unknown) and (texts["chapters"].strip() or texts["conclusion"].strip()):
         body_text = texts["chapters"] + "\n" + texts["conclusion"]
         # 只扫 HIGH（强度词：证明/显著/普遍/必然）——CRIT 是数据身份词，在背景陈述、
         # 拒绝句式、RQ 描述中合法高频出现，正文级扫描误报率过高；身份声称风险由
@@ -610,9 +651,9 @@ def _run_impl(root, out_dir=None, pdf=None, verbose=True):
     bad15 = []
     if not lim_hit:
         bad15.append("文本未见研究限制论述")
-    if simulated_only and lim_hit:
+    if (has_simulated or has_unknown) and lim_hit:
         win = all_text[max(0, lim_hit.start() - 200): lim_hit.start() + 400]
-        if not re.search(r"(模拟|演示|不代表|构造)", win):
+        if not re.search(r"(模拟|演示|不代表|构造|身份)", win):
             bad15.append("模拟数据未在限制论述中声明")
     status15 = "PASS" if not bad15 else ("FAIL" if "未见研究限制" in bad15[0] else "WARN")
     rep.add("RQG-15", "研究限制与证据能力匹配", status15, "Medium" if not bad15 else "High",

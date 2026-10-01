@@ -39,7 +39,7 @@
 | **结构/FEM 支持** | 有限元分析流程指导，静力/模态/疲劳分析方法说明 |
 | **数据分析** | 描述统计（mean/median/std），数据清洗，单位统一，计算审计 |
 | **图表生成** | Mermaid 技术路线图/流程图/故障树 → PNG；matplotlib 数据统计图 |
-| **Mermaid 渲染** | 自动探测系统 Chrome，无需手动设置环境变量；失败时 fallback 到 matplotlib |
+| **Mermaid 渲染** | 自动探测系统 Chrome，无需手动设置环境变量；渲染失败即失败（FIGURE_ERROR，不生成假图） |
 | **引用完整性** | 观点→来源→支持度→编号→格式全链审计，识别缺引用/部分支持/不支持 |
 | **QA 论文体检** | 六大维度检查（结构/学术/工程/数据/图表/写作），四级风险分级 |
 | **答辩准备** | PPT 结构推荐，5/8/10 分钟答辩稿，预测问题库 |
@@ -244,7 +244,7 @@ QA 报告提示待补学校格式项
 
 ## 9. 图表生成
 
-### Mermaid 优先
+### Mermaid 渲染
 
 对于技术路线图、流程图、故障树等结构化图表：
 
@@ -256,23 +256,21 @@ QA 报告提示待补学校格式项
 - 系统需安装 Google Chrome
 - Skill 会自动探测 Chrome 路径，**无需手动设置环境变量**
 
-### Fallback 机制
+### 渲染失败即失败（v1.6.5 起无 fallback）
 
 如果 Mermaid CLI 不可用或渲染失败：
 
 ```
-mmdc 失败 → matplotlib 生成真正可读的替代图（含流程图框/故障树节点）→ 嵌入 DOCX
+mmdc 失败 → FIGURE_ERROR（退出码 2）→ 生命周期记 REJECTED → 清理残缺文件
+         → Delivery Gate 阻止交付
 ```
 
-**注意**：fallback 图是真正可读的结构化图表，不是空白占位图。
+**v1.6.5 移除了旧的 "matplotlib fallback"**：旧版在渲染失败时会画一张与真实模型
+无关的通用图（Top Event/Cause A/B）并按文件大小判成功，属于**语义造假**——那样的
+图内容错误却会进入论文。现在渲染失败就是失败。
 
-### FIGURE_ERROR
-
-如果 Mermaid 和 matplotlib fallback 都失败：
-
-```
-返回 FIGURE_ERROR（退出码 2）→ QA 标记该图为"缺失/生成失败" → 阻止进入最终论文
-```
+**正确的处置**：修复渲染环境后重试，或改用本地 `figkit` 按**真实节点/边数据**
+程序化重绘（这类图有 layout 元数据，可被几何与视觉 QA 真实校验）。
 
 ### 图表类型区分
 
@@ -280,8 +278,8 @@ mmdc 失败 → matplotlib 生成真正可读的替代图（含流程图框/故�
 |---|---|---|
 | diagram source | `.mmd` 源文件 | 否（内部文件） |
 | rendered figure | mmdc 成功渲染的 PNG/SVG | 是 |
-| fallback figure | matplotlib 生成的真正可读替代图 | 是 |
-| placeholder | 测试用空白/文字占位图 | **否**（禁止进入最终论文） |
+| 本地确定性图 | `figkit` 按真实数据程序化绘制（含 layout JSON） | 是 |
+| placeholder | 空白/文字占位图 | **否**（禁止进入最终论文） |
 
 ## 10. 输出文件
 
@@ -381,7 +379,7 @@ v1.4.0 研究完整性与证据可追溯层（`.aeromech/research/` 注册表 + 
 - ✅ 学校模板可选机制（三层格式结构：general_principles / general_defaults / school_specific_unknown）
 - ✅ 工程分析能力（FMEA/FTA/RCA 框架）
 - ✅ 数据分析能力（描述统计 + 计算审计）
-- ✅ 图表生成（Mermaid + matplotlib fallback）
+- ✅ 图表生成（Mermaid 真实渲染 + figkit 本地确定性绘图）
 - ✅ 引用完整性审计（claim → material_id → source）
 - ✅ QA 论文体检（六大维度 + 四级风险分级）
 - ✅ 答辩准备（PPT 结构 + 多版本答辩稿 + 预测问题库）
@@ -399,7 +397,7 @@ v1.4.0 研究完整性与证据可追溯层（`.aeromech/research/` 注册表 + 
 ## 12. 已知限制
 
 1. **学校正式模板缺失时**：只能使用通用默认格式（宋体、小四、1.5倍行距等），这些仅为 fallback 默认值，不代表任何学校正式要求。获取正式学校模板后将自动覆盖。
-2. **Mermaid 依赖**：需要系统安装 Google Chrome。若 mmdc 不可用，会自动 fallback 到 matplotlib 生成替代图。
+2. **Mermaid 依赖**：需要系统安装 Google Chrome。若 mmdc 不可用，该图将返回 FIGURE_ERROR 并阻止交付（**v1.6.5 起不再有自动 fallback**）；此时需修复渲染环境，或改用 figkit 按真实数据重绘。
 3. **FMEA 评分**：S/O/D/RPN 如果没有真实依据不能伪造，只能提供分析表骨架，需用户回填真实数据。
 4. **参考文献**：Skill 不提供具体可引用的文献条目，只提供检索策略和文献登记表框架。用户需自行从 CNKI/万方等数据库检索真实文献。
 5. **学校格式最终确认**：即使使用通用默认格式生成了 DOCX/PDF，最终仍应以学校正式发布的格式要求为准。建议在提交前对照学校模板进行最终检查。

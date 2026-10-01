@@ -66,6 +66,19 @@ def full_pass_env(root):
                          ("TF-05 摘要结构", "PASS", "ok"),
                          ("TF-08 正文字体", "PASS", "ok")]))
     qa_file(root, "content-purity-report.md", base_report([("MD-01 残留", "PASS", "0 命中")]))
+    # v1.6.5 A3：缺失报告不再让域消失（记 NEEDS_HUMAN_REVIEW）——本夹具的语义是
+    # "全部适用域均 PASS"，故必须把 pipeline 会产出的全部格式报告补齐，否则测的就不是
+    # 研究侧语义而是域缺失。其余 8 份报告各给 1 条 PASS 行（内容本测试不关心）。
+    for _f, _code in [("cover-fidelity-report.md", "CF-01 封面对象树"),
+                      ("cover-align-report.md", "COVER-ALIGN-01 校徽位置"),
+                      ("cover-fill-report.md", "COVER-FILL-01 题目在横线内"),
+                      ("color-fidelity-report.md", "COLOR-01 对象类型"),
+                      ("page-fidelity-report.md", "HF-01 页眉文字"),
+                      ("figure-table-report.md", "FIG-01 图片存在"),
+                      ("graph-quality-report.md", "GQ-01 节点无重叠"),
+                      ("figure-visual-report.md", "VIS-01 Layout Balance"),
+                      ("table-readability-report.md", "TR-01 逐表可读")]:
+        qa_file(root, _f, base_report([(_code, "PASS", "ok")]))
     # pipeline 步骤（manifest meta.steps）
     w(root, "build-contract.yaml", yaml.safe_dump({
         "project": {"title": "T"}, "content": {"chapters": []},

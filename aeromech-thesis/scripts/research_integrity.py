@@ -54,6 +54,40 @@ CLAIM_TYPES = ["fact", "interpretation", "calculation_result",
 DATASET_TYPES = ["real", "public", "user_provided", "literature", "simulated", "assumption"]
 SYNTH_LABEL = "【假设/模拟·仅演示方法】"
 
+# A4b（2026-10-01）：研究诚信**身份字段**——决定"证据/数据是什么"的字段。
+# 这些字段一旦可经人工裁决（human-review-queue 的 approve/modify）直接改写，
+# 就等于给"把模拟说成实测"开了一条洗白通道。故一律禁止经 apply_human 修改：
+# 只能走"改正文/补材料 → 重新诊断 → validate"的正规路径。
+# 各注册表：受保护字段集合（前缀匹配，如 "related_" 覆盖 related_*）。
+IDENTITY_FIELDS = {
+    "evidence": {"source_type", "verification_status", "source", "used_in"},
+    "datasets": {"type", "label", "source", "reason", "generation_method",
+                 "assumptions", "parameters", "limitations", "used_in"},
+    "computations": {"verified", "verification", "formula", "inputs", "output"},
+    "claims": {"claim_type", "claim_strength", "evidence_ids", "analysis_ids"},
+    "conclusions": {"claim_type", "claims", "analyses", "evidence"},
+    "figures": {"type", "generation_method", "related_rqs", "related_analyses",
+                "related_claims"},
+    "conflicts": {"resolution", "status"},
+    "rq": {"evidence_requirement", "needs"},
+    "methods": {"basis"},
+    "design": {"rq_requirements", "evidence_requirement"},
+}
+
+
+def protected_fields(registry):
+    """返回该注册表的受保护身份字段集合（未知注册表→空集，调用方自行决定）。"""
+    return set(IDENTITY_FIELDS.get(str(registry), set()))
+
+
+def is_identity_field(registry, field):
+    """该 (注册表, 字段) 是否为研究诚信身份字段。支持 'related_' 一类前缀族。"""
+    f = str(field)
+    prot = protected_fields(registry)
+    if f in prot:
+        return True
+    return any(p.endswith("_") and f.startswith(p) for p in prot)
+
 # v1.5：RQ 声明的证据要求（设计级能力边界）与修复类型
 EVIDENCE_REQUIREMENTS = ["real_world_data", "verified_evidence", "simulated_ok", "literature_only"]
 REPAIR_TYPES = ["REFRAME_RQ", "CHANGE_METHOD", "LIMIT_SCOPE", "ADD_EVIDENCE", "REVISE_CLAIM",
@@ -608,8 +642,19 @@ def coverage(root):
             if e:
                 statuses.append(str(e.get("verification_status")))
             elif str(r) in ds_by_id:
-                dt = str(ds_by_id[str(r)].get("type"))
-                statuses.append("simulated" if dt in ("simulated", "assumption") else "verified")
+                # A4c（2026-10-01）：数据集不得因"非 simulated"就被默认升级为 verified。
+                # 数据集的**自身**核验状态才是权威；缺省/未知一律 pending（绝不自动 verified）。
+                ds = ds_by_id[str(r)]
+                dt = str(ds.get("type"))
+                dvs = str(ds.get("verification_status") or "").strip()
+                if dt in ("simulated", "assumption"):
+                    statuses.append("simulated")
+                elif dvs in VERIFICATION_STATUS:
+                    statuses.append(dvs)
+                else:
+                    # 未登记核验状态：仅 real + 有来源时才按 verified，其余（含未知）pending
+                    statuses.append("verified" if (dt == "real" and ds.get("source"))
+                                    else "pending")
         has_partial = "partial" in statuses
         has_sim = "simulated" in statuses
         has_ok = any(s in ("verified", "partial", "simulated") for s in statuses)

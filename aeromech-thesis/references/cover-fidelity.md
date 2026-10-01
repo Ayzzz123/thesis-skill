@@ -76,7 +76,7 @@ build（母版复制+字段填充+内容组装）
 不触碰其它属性；成品无模板同款样式引用时注入无效样式会破坏文档 → 注入前校验
 模板 styles.xml 中存在对应 styleId，否则跳过并记 WARN。
 
-## 5. Cover Fidelity QA（CF-01~20）
+## 5. Cover Fidelity QA（CF-01~25）
 
 `python scripts/cover_fidelity.py --template <模板.docx> --template-pdf <模板.pdf>
 --docx <成品.docx> --pdf <成品.pdf> --out <qa目录>`

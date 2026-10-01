@@ -56,23 +56,31 @@
 
 **图表类型区分**：
 - **diagram source**：`.mmd` 源文件，Mermaid 脚本
-- **rendered figure**：mmdc 成功渲染的 PNG/SVG（优先使用）
-- **fallback figure**：mmdc 失败时 matplotlib 生成的**真正可读替代图**（非占位图，含结构化内容如流程图框/故障树节点）
-- **placeholder**：仅测试用途的空白/文字占位图，**禁止进入最终论文 DOCX/PDF**
+- **rendered figure**：mmdc 成功渲染的 PNG/SVG（唯一合法的 mermaid 产物）
+- **本地确定性图**：用 `figkit` 按**真实节点/边数据**程序化绘制的 PNG（含 layout JSON）
+- **placeholder**：空白/文字占位图，**禁止进入最终论文 DOCX/PDF**
+
+> **v1.6.5 起无 fallback figure。** 旧版的 "mmdc 失败 → matplotlib 生成可读替代图"
+> 已被删除：它会在渲染失败时画一张与真实模型无关的通用图（Top Event/Cause A/B）
+> 并按文件大小判成功，属**语义造假**。现在渲染失败即失败，见下。
 
 **Mermaid 渲染流程**：
 调用 `scripts/render_mermaid.py` 自动渲染 `.mmd` → PNG。该脚本：
 1. 自动探测系统 Chrome → chrome-headless-shell
 2. 设置 `PUPPETEER_EXECUTABLE_PATH` 并传递给 mmdc
 3. 若 mmdc 成功 → 输出 rendered figure（退出码 0）
-4. 若 mmdc 失败 → 尝试生成合格 fallback figure（退出码 0）
-5. 若 fallback 也失败 → 返回 FIGURE_ERROR（退出码 2），**该图不得进入最终论文**
+4. **若 mmdc 失败 → 返回 FIGURE_ERROR（退出码 2）**，生命周期记 `REJECTED`，
+   并清理 mmdc 可能留下的残缺文件；**该图不得进入最终论文**
+5. 失败后正确的处置：修环境重试，或改用 `figkit` 按真实数据**忠实重绘**——
+   不得生成任何"看起来像真实模型"的替代图
 
 用户无需手动设置环境变量。命令示例：`python scripts/render_mermaid.py diagram.mmd diagram.png transparent`
 
 **matplotlib 统计图**：为数据统计图/可靠性曲线生成 `.py` 脚本并直接执行，输出 PNG。若数据为模拟，脚本开头标**【假设/模拟·仅演示方法】**。
 
-**QA 联动**：若 render_mermaid.py 返回退出码 2（FIGURE_ERROR），QA Agent 应在 qa-report.md 中标记该图为"缺失/生成失败"，severity=High，target_stage=S8。
+**QA 联动**：若 render_mermaid.py 返回退出码 2（FIGURE_ERROR），生命周期记 `REJECTED`；
+Delivery Gate 的 `G-FIG-01` 会因 REJECTED 图判 critical FAIL 阻止交付；QA Agent 应在
+qa-report.md 中标记该图为"生成失败"，severity=High，target_stage=S8。
 
 ### 步骤4：更新 state.yaml
 - 写入 `writing.gate_evidence.evidence_files` 中的 `artifacts/figures/figure-plan.md`。
