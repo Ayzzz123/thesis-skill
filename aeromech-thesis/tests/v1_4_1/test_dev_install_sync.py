@@ -149,7 +149,11 @@ def main():
               skill_version(install) == v_dev and v_dev is not None,
               f"dev={v_dev} install={skill_version(install)}")
         if os.path.isfile(SYNC):
-            rc, out = run([SYNC, "--check"], cwd=repo_root)
+            # 显式传 --install：sync.py 的默认安装路径是 ~/.qoder-cn/skills/...，
+            # 而本测试探测到的安装副本可能在别处（如 ~/.codex/skills/...）。
+            # 不传参会导致"比对的是另一个空目录"→ 假 FAIL（B8b 收尾，2026-10-01）。
+            rc, out = run([SYNC, "--check", "--dev", DEV, "--install", install],
+                          cwd=repo_root)
             check("B8B-10 两侧逐字节一致（sync.py --check rc=0）", rc == 0,
                   out.strip().splitlines()[-1][:90] if out.strip() else "")
     else:
